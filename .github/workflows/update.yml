@@ -1,0 +1,30 @@
+name: Kurse aktualisieren
+
+on:
+  schedule:
+    # Mo-Fr, 22:30 UTC (nach US-Handelsschluss, Sommer wie Winter)
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: yfinance installieren
+        run: pip install yfinance
+      - name: Kurse holen
+        run: python fetch_data.py
+      - name: Datei einchecken
+        run: |
+          git config user.name "sektor-radar-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data.json
+          git diff --staged --quiet || git commit -m "Kurse aktualisiert"
+          git push
