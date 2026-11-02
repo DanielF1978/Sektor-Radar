@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e151c">
+<title>Sektor-Radar</title>
+<style>
+:root {
+  --bg: #f3f5f7; --surface: #ffffff; --fg: #14202b; --muted: #5b6b7a; --line: #d5dde4;
+  --accent: #0b6e8a; --lead: #1b7f4b; --weak: #b26a00; --lag: #b73a3a; --impr: #2459b8;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e151c; --surface: #151f29; --fg: #e4ebf1; --muted: #93a3b2; --line: #2a3846;
+    --accent: #4fc0dd; --lead: #4cc585; --weak: #e5a43a; --lag: #ef7b7b; --impr: #7aa6f5;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.5;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left));
+}
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { font-size: 1.7rem; line-height: 1.1; margin: 0; }
+h2 { font-size: 1.1rem; margin: 0 0 4px; }
+p { margin: 0; max-width: 65ch; }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.note { font-size: .85rem; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; min-width: 0; }
+.scroll { overflow-x: auto; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { font: inherit; border: 0; background: transparent; color: var(--fg); padding: 8px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--bg); font-weight: 600; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-size: .88rem; }
+.tick { font-family: var(--mono); font-weight: 600; }
+.pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
+.q-lead { color: var(--lead); } .q-weak { color: var(--weak); } .q-lag { color: var(--lag); } .q-impr { color: var(--impr); }
+svg.rrg { width: 100%; max-width: 640px; height: auto; display: block; margin: 0 auto; }
+svg text { font-family: var(--mono); }
+.flows { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .flows { grid-template-columns: 1fr; } }
+.flowcol h3 { font-size: .95rem; margin: 0 0 8px; }
+.flowcol ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.flowcol li { display: flex; justify-content: space-between; gap: 8px; font-size: .9rem; }
+.flowcol li span:last-child { font-family: var(--mono); }
+.verdict { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.phases { display: flex; gap: 8px; flex-wrap: wrap; }
+.phase-btn { font: inherit; background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; text-align: left; flex: 1 1 150px; min-width: 0; cursor: pointer; }
+.phase-btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.phase-btn small { display: block; color: var(--muted); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-family: var(--mono); font-size: .78rem; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; }
+.chip.hit { border-color: var(--lead); color: var(--lead); }
+.bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.fit { display: grid; grid-template-columns: 120px 1fr 56px; gap: 8px; align-items: center; font-size: .85rem; }
+.fit span:last-child { font-family: var(--mono); text-align: right; }
+#err { color: var(--lag); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="label">Sektor-Rotation · 11 GICS-Sektoren</div>
+    <h1>Sektor-Radar</h1>
+    <p id="stand" class="note" style="margin-top:6px">Lade Daten…</p>
+  </header>
+
+  <p id="err" hidden></p>
+
+  <section id="chartsec" hidden>
+    <div class="row">
+      <div><h2>Relative Rotation</h2></div>
+      <div class="seg" role="group" aria-label="Zeitraster">
+        <button type="button" id="mode-w" aria-pressed="true">Wöchentlich</button>
+        <button type="button" id="mode-d" aria-pressed="false">Täglich</button>
+      </div>
+    </div>
+    <p class="note">Rechts von 100 schlägt der Sektor den S&amp;P 500 (hier SPY) im Trend, oberhalb von 100 nimmt seine relative Stärke zu. Der Schweif zeigt die letzten Schritte. Täglich reagiert schneller, wöchentlich ist ruhiger.</p>
+    <div class="panel"><svg id="rrg" class="rrg" role="img" aria-label="Relative Rotation Graph"></svg></div>
+    <div class="panel scroll">
+      <table>
+        <thead><tr><th>Sektor</th><th>Quadrant</th><th class="num">Ratio</th><th class="num">Mom.</th><th class="num">1M rel.</th><th class="num">3M rel.</th></tr></thead>
+        <tbody id="result"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="flowsec" hidden>
+    <h2>Wohin fließt das Geld?</h2>
+    <div class="panel">
+      <div class="flows">
+        <div class="flowcol"><h3 style="color:var(--lag)">Geld geht raus</h3><ul id="out"></ul></div>
+        <div class="flowcol"><h3 style="color:var(--lead)">Geld kommt rein</h3><ul id="in"></ul></div>
+      </div>
+      <p id="verdict" class="verdict"></p>
+    </div>
+  </section>
+
+  <section id="cyclesec" hidden>
+    <h2>Passt das zum Konjunkturzyklus?</h2>
+    <div class="phases" id="phases"></div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+      <p id="phasedesc"></p>
+      <div class="chips" id="phasechips"></div>
+      <p id="phasefit"></p>
+      <div class="label">Welche Phase stützen die Daten am meisten?</div>
+      <div id="fitbars" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </section>
+
+  <p class="note">Kursdaten: Yahoo Finance über <span class="tick">yfinance</span>, täglich nach US-Handelsschluss aktualisiert. Ratio = relative Stärke gegenüber ihrem gleitenden Durchschnitt. Momentum = Veränderung dieser Ratio. Eine Näherung an den RRG, keine Anlageberatung.</p>
+</main>
+
+<script>
+/* ---- core ---- */
+var NAMES = {
+  XLK: "Technologie", XLF: "Finanzwesen", XLY: "Zyklischer Konsum", XLC: "Kommunikation", XLI: "Industrie",
+  XLB: "Materialien", XLE: "Energie", XLV: "Gesundheitswesen", XLP: "Basiskonsumgüter", XLU: "Versorger", XLRE: "Immobilien"
+};
+var SECTOR_TICKERS = Object.keys(NAMES);
+var BENCH = "SPY";
+var PHASES = [
+  { id: "rez", name: "Frühe Rezession", sub: "Zinsen fallen", fav: ["XLV", "XLP", "XLU"],
+    text: "Das Geld verlässt Technologie und Industrie und flüchtet in defensive Sektoren: Gesundheitswesen, Basiskonsumgüter und Versorger." },
+  { id: "erh", name: "Frühe Erholung", sub: "Zinsen niedrig, Wirtschaft springt an", fav: ["XLK", "XLY", "XLF"],
+    text: "Das Geld rotiert aus Defensivwerten in zyklische Sektoren: Technologie, zyklischer Konsum und Finanzwesen." },
+  { id: "spaet", name: "Später Aufschwung", sub: "Inflation und Zinsen steigen", fav: ["XLE", "XLB"],
+    text: "Kapital verlässt Technologie und wandert in Substanz- und Rohstoffwerte wie Energie und Materialien." }
+];
+var CFG = {
+  w: { sma: 10, lag: 4, tail: 6 },
+  d: { sma: 30, lag: 10, tail: 10 }
+};
+
+function weekIndices(dates) {
+  var last = {}, order = [];
+  dates.forEach(function (ds, i) {
+    var d = new Date(ds + "T00:00:00Z");
+    var off = (d.getUTCDay() + 6) % 7;
+    var mon = new Date(d.getTime() - off * 86400000).toISOString().slice(0, 10);
+    if (!(mon in last)) order.push(mon);
+    last[mon] = i;
+  });
+  return order.map(function (k) { return last[k]; });
+}
+
+function pick(arr, idx) { return idx.map(function (i) { return arr[i]; }); }
+
+function smaAt(arr, n, i) {
+  var s = 0;
+  for (var k = i - n + 1; k <= i; k++) s += arr[k];
+  return s / n;
+}
+
+function rrgSeries(sec, bench, cfg) {
+  var rs = sec.map(function (v, i) { return v / bench[i]; });
+  var ratio = [];
+  for (var i = 0; i < rs.length; i++) ratio.push(i >= cfg.sma - 1 ? 100 * rs[i] / smaAt(rs, cfg.sma, i) : null);
+  var mom = [];
+  for (var j = 0; j < ratio.length; j++) {
+    var p = j - cfg.lag;
+    mom.push(ratio[j] !== null && p >= 0 && ratio[p] !== null ? 100 * ratio[j] / ratio[p] : null);
+  }
+  var pts = [];
+  for (var k = 0; k < ratio.length; k++) if (ratio[k] !== null && mom[k] !== null) pts.push({ x: ratio[k], y: mom[k], i: k });
+  return pts.slice(-cfg.tail);
+}
+
+function perfRel(sec, bench, days) {
+  var n = sec.length - 1, p = n - days;
+  if (p < 0) return null;
+  return (sec[n] / sec[p] - 1) * 100 - (bench[n] / bench[p] - 1) * 100;
+}
+
+function quad(x, y) {
+  if (x >= 100 && y >= 100) return { k: "lead", n: "Leading" };
+  if (x >= 100 && y < 100) return { k: "weak", n: "Weakening" };
+  if (x < 100 && y < 100) return { k: "lag", n: "Lagging" };
+  return { k: "impr", n: "Improving" };
+}
+
+function computeAll(data, mode) {
+  var cfg = CFG[mode];
+  var idx = mode === "w" ? weekIndices(data.dates) : data.dates.map(function (_, i) { return i; });
+  var bench = pick(data.series[BENCH], idx);
+  return SECTOR_TICKERS.map(function (t) {
+    var pts = rrgSeries(pick(data.series[t], idx), bench, cfg);
+    if (!pts.length) return { t: t, ok: false };
+    var h = pts[pts.length - 1];
+    return {
+      t: t, ok: true, pts: pts, x: h.x, y: h.y, q: quad(h.x, h.y),
+      m1: perfRel(data.series[t], data.series[BENCH], 21),
+      m3: perfRel(data.series[t], data.series[BENCH], 63)
+    };
+  });
+}
+/* ---- end core ---- */
+
+function $(id) { return document.getElementById(id); }
+function fmt(x, d, plus) {
+  if (x === null || x === undefined) return "–";
+  var s = x.toFixed(d === undefined ? 1 : d).replace(".", ",");
+  return (plus && x > 0 ? "+" : "") + s;
+}
+var DATA = null, MODE = "w", PHASE = "erh";
+
+function drawChart(d) {
+  var W = 420, H = 400, L = 34, R = 12, T = 12, B = 32;
+  var mx = 1, my = 1;
+  d.forEach(function (p) { if (!p.ok) return; p.pts.forEach(function (q) {
+    mx = Math.max(mx, Math.abs(q.x - 100) * 1.15); my = Math.max(my, Math.abs(q.y - 100) * 1.15);
+  }); });
+  mx = Math.ceil(mx * 2) / 2; my = Math.ceil(my * 2) / 2;
+  var pw = W - L - R, ph = H - T - B;
+  function X(v) { return L + (v - 100 + mx) / (2 * mx) * pw; }
+  function Y(v) { return T + (my - (v - 100)) / (2 * my) * ph; }
+  var cx = X(100), cy = Y(100), s = "";
+  function qr(x0, y0, x1, y1, c) { return '<rect x="' + x0 + '" y="' + y0 + '" width="' + (x1 - x0) + '" height="' + (y1 - y0) + '" fill="' + c + '" fill-opacity="0.09"/>'; }
+  s += qr(cx, T, W - R, cy, "var(--lead)") + qr(cx, cy, W - R, T + ph, "var(--weak)") + qr(L, cy, cx, T + ph, "var(--lag)") + qr(L, T, cx, cy, "var(--impr)");
+  s += '<rect x="' + L + '" y="' + T + '" width="' + pw + '" height="' + ph + '" fill="none" stroke="var(--line)"/>';
+  s += '<line x1="' + cx + '" y1="' + T + '" x2="' + cx + '" y2="' + (T + ph) + '" stroke="var(--muted)"/>';
+  s += '<line x1="' + L + '" y1="' + cy + '" x2="' + (W - R) + '" y2="' + cy + '" stroke="var(--muted)"/>';
+  function ql(x, y, t, c, a) { return '<text x="' + x + '" y="' + y + '" font-size="10" font-weight="600" fill="' + c + '" text-anchor="' + a + '">' + t + '</text>'; }
+  s += ql(W - R - 6, T + 14, "LEADING", "var(--lead)", "end") + ql(W - R - 6, T + ph - 8, "WEAKENING", "var(--weak)", "end");
+  s += ql(L + 6, T + ph - 8, "LAGGING", "var(--lag)", "start") + ql(L + 6, T + 14, "IMPROVING", "var(--impr)", "start");
+  s += '<text x="' + (L + pw / 2) + '" y="' + (H - 8) + '" font-size="10" fill="var(--muted)" text-anchor="middle">RS-Ratio (Trend)</text>';
+  s += '<text transform="translate(10 ' + (T + ph / 2) + ') rotate(-90)" font-size="10" fill="var(--muted)" text-anchor="middle">RS-Momentum</text>';
+  d.forEach(function (p) {
+    if (!p.ok) return;
+    var col = "var(--" + p.q.k + ")";
+    s += '<polyline fill="none" stroke="' + col + '" stroke-opacity="0.55" stroke-width="1.5" points="' +
+      p.pts.map(function (q) { return X(q.x).toFixed(1) + "," + Y(q.y).toFixed(1); }).join(" ") + '"/>';
+    var px = X(p.x), py = Y(p.y), anc = px > W - R - 44 ? "end" : "start", dx = anc === "end" ? -9 : 9;
+    s += '<circle cx="' + px + '" cy="' + py + '" r="5.5" fill="' + col + '" stroke="var(--surface)" stroke-width="1.5"/>';
+    s += '<text x="' + (px + dx) + '" y="' + (py + 3.5) + '" font-size="10" font-weight="600" fill="var(--fg)" text-anchor="' + anc + '">' + p.t + '</text>';
+  });
+  $("rrg").setAttribute("viewBox", "0 0 " + W + " " + H);
+  $("rrg").innerHTML = s;
+}
+
+function drawTable(d) {
+  var h = "";
+  d.filter(function (p) { return p.ok; }).sort(function (a, b) { return b.y - a.y; }).forEach(function (p) {
+    h += '<tr><td><span class="tick">' + p.t + '</span> ' + NAMES[p.t] + '</td><td><span class="pill q-' + p.q.k + '">' + p.q.n + '</span></td>' +
+      '<td class="num">' + fmt(p.x, 2) + '</td><td class="num">' + fmt(p.y, 2) + '</td>' +
+      '<td class="num">' + fmt(p.m1, 1, true) + '</td><td class="num">' + fmt(p.m3, 1, true) + '</td></tr>';
+  });
+  $("result").innerHTML = h;
+}
+
+function drawFlow(d) {
+  var ok = d.filter(function (p) { return p.ok; });
+  var outs = ok.filter(function (p) { return p.y < 100; }).sort(function (a, b) { return a.y - b.y; }).slice(0, 3);
+  var ins = ok.filter(function (p) { return p.y >= 100; }).sort(function (a, b) { return b.y - a.y; }).slice(0, 3);
+  function li(p) { return '<li><span><span class="tick">' + p.t + '</span> ' + NAMES[p.t] + '</span><span>' + fmt(p.y - 100, 2, true) + '</span></li>'; }
+  $("out").innerHTML = outs.length ? outs.map(li).join("") : '<li class="note">Keine fallende Dynamik.</li>';
+  $("in").innerHTML = ins.length ? ins.map(li).join("") : '<li class="note">Keine steigende Dynamik.</li>';
+  var v;
+  if (outs.length && ins.length) {
+    var spread = ins[0].y - outs[0].y;
+    var st = spread > 3 ? "deutliche" : spread > 1.5 ? "erkennbare" : "schwache";
+    v = "Es zeigt sich eine " + st + " Rotation von " + outs.map(function (p) { return NAMES[p.t]; }).join(", ") +
+      " in " + ins.map(function (p) { return NAMES[p.t]; }).join(", ") + ".";
+  } else {
+    v = "Alle Sektoren bewegen sich gleichgerichtet gegenüber dem Markt. Das spricht eher für eine Marktbewegung als für eine Rotation.";
+  }
+  $("verdict").textContent = v;
+}
+
+function drawCycle(d) {
+  var by = {};
+  d.forEach(function (p) { if (p.ok) by[p.t] = p; });
+  $("phases").innerHTML = PHASES.map(function (p) {
+    return '<button type="button" class="phase-btn" data-id="' + p.id + '" aria-pressed="' + (p.id === PHASE) + '"><strong>' + p.name + '</strong><small>' + p.sub + '</small></button>';
+  }).join("");
+  var ph = PHASES.filter(function (p) { return p.id === PHASE; })[0];
+  $("phasedesc").textContent = ph.text;
+  var n = 0, up = 0;
+  $("phasechips").innerHTML = ph.fav.map(function (t) {
+    var p = by[t], u = p && p.y >= 100;
+    if (p) { n++; if (u) up++; }
+    return '<span class="chip' + (u ? " hit" : "") + '">' + t + (p ? (u ? " steigt" : " fällt") : "") + '</span>';
+  }).join("");
+  $("phasefit").textContent = n ? up + " von " + n + " typischen Sektoren dieser Phase haben steigende Dynamik." : "Keine Daten.";
+  var sc = PHASES.map(function (p) {
+    var v = p.fav.map(function (t) { return by[t] ? by[t].y - 100 : null; }).filter(function (x) { return x !== null; });
+    return { p: p, avg: v.length ? v.reduce(function (a, b) { return a + b; }, 0) / v.length : null };
+  });
+  var ma = Math.max.apply(null, sc.map(function (s) { return s.avg === null ? 0 : Math.abs(s.avg); }).concat([0.5]));
+  var best = sc.filter(function (s) { return s.avg !== null; }).sort(function (a, b) { return b.avg - a.avg; })[0];
+  $("fitbars").innerHTML = sc.map(function (s) {
+    var w = s.avg === null ? 0 : Math.max(0, Math.min(100, 50 + s.avg / ma * 50));
+    return '<div class="fit"><span>' + s.p.name + (best && best.p === s.p ? " ★" : "") + '</span><div class="bar"><i style="width:' + w + '%"></i></div><span>' + fmt(s.avg, 2, true) + '</span></div>';
+  }).join("");
+  document.querySelectorAll(".phase-btn").forEach(function (b) {
+    b.addEventListener("click", function () { PHASE = b.getAttribute("data-id"); render(); });
+  });
+}
+
+function render() {
+  var d = computeAll(DATA, MODE);
+  drawChart(d); drawTable(d); drawFlow(d); drawCycle(d);
+  $("mode-w").setAttribute("aria-pressed", MODE === "w");
+  $("mode-d").setAttribute("aria-pressed", MODE === "d");
+}
+
+function fail(msg) {
+  $("stand").textContent = "";
+  var e = $("err"); e.hidden = false; e.textContent = msg;
+}
+
+function start(data) {
+  var ok = data && data.dates && data.series && [BENCH].concat(SECTOR_TICKERS).every(function (t) { return data.series[t] && data.series[t].length === data.dates.length; });
+  if (!ok || data.dates.length < 100) { fail("Die Datei data.json ist unvollständig. Starte den Job unter Actions erneut."); return; }
+  DATA = data;
+  var last = data.dates[data.dates.length - 1].split("-").reverse().join(".");
+  $("stand").textContent = "Stand: Handelsschluss " + last;
+  ["chartsec", "flowsec", "cyclesec"].forEach(function (id) { $(id).hidden = false; });
+  render();
+}
+
+function load() {
+  var urls = ["https://raw.githubusercontent.com/DanielF1978/Sektor-Radar/main/data.json", "data.json"];
+  function tryNext(i) {
+    if (i >= urls.length) { fail("Noch keine Daten. Öffne im Repository den Reiter Actions und starte „Kurse aktualisieren“ einmal von Hand."); return; }
+    fetch(urls[i] + (i === 0 ? "?t=" + Date.now() : ""), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(start)
+      .catch(function () { tryNext(i + 1); });
+  }
+  tryNext(0);
+}
+
+$("mode-w").addEventListener("click", function () { MODE = "w"; if (DATA) render(); });
+$("mode-d").addEventListener("click", function () { MODE = "d"; if (DATA) render(); });
+load();
+</script>
+</body>
+</html>
