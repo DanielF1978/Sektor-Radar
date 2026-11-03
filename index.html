@@ -10,6 +10,7 @@
 :root {
   --bg: #f3f5f7; --surface: #ffffff; --fg: #14202b; --muted: #5b6b7a; --line: #d5dde4;
   --accent: #0b6e8a; --lead: #1b7f4b; --weak: #b26a00; --lag: #b73a3a; --impr: #2459b8;
+  --pos: #1c5c45; --neg: #a3303a; --neu: #eef1f3; --on-strong: #ffffff; --bench-bg: #14191f; --bench-fg: #ffffff;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
@@ -18,6 +19,7 @@
   :root {
     --bg: #0e151c; --surface: #151f29; --fg: #e4ebf1; --muted: #93a3b2; --line: #2a3846;
     --accent: #4fc0dd; --lead: #4cc585; --weak: #e5a43a; --lag: #ef7b7b; --impr: #7aa6f5;
+    --pos: #2f8a63; --neg: #c24650; --neu: #1d2832; --on-strong: #ffffff; --bench-bg: #05080b; --bench-fg: #f2f6f9;
     color-scheme: dark;
   }
 }
@@ -69,6 +71,24 @@ svg text { font-family: var(--mono); }
 .fit { display: grid; grid-template-columns: 120px 1fr 56px; gap: 8px; align-items: center; font-size: .85rem; }
 .fit span:last-child { font-family: var(--mono); text-align: right; }
 #err { color: var(--lag); }
+
+/* Heatmap */
+.linkbtn { font: inherit; background: none; border: 0; color: var(--fg); text-decoration: underline; cursor: pointer; padding: 4px 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; align-items: center; }
+.heat { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 600px) { .heat { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile {
+  display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 118px;
+  padding: 12px 14px; border-radius: 2px; background: var(--neu); color: var(--fg);
+}
+.tile.pos { background: color-mix(in srgb, var(--pos) var(--m), var(--neu)); }
+.tile.neg { background: color-mix(in srgb, var(--neg) var(--m), var(--neu)); }
+.tile.strong { color: var(--on-strong); }
+.tile.bench { background: var(--bench-bg); color: var(--bench-fg); }
+.tile .tname { font-size: .85rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.tile .tbig { font-size: 1.6rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile .tsmall { font-size: .72rem; opacity: .85; line-height: 1.35; }
+.tile .tsmall + .tsmall { font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -80,6 +100,30 @@ svg text { font-family: var(--mono); }
   </header>
 
   <p id="err" hidden></p>
+
+  <section id="heatsec" hidden>
+    <div class="controls">
+      <div>
+        <h2>Sektor-Rotation</h2>
+        <p class="note">Welche Teile des US-Marktes führen oder hinken hinterher?</p>
+      </div>
+      <button type="button" id="refresh" class="linkbtn">Aktualisieren</button>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Zeitraum">
+        <button type="button" data-period="d" aria-pressed="false">1 Tag</button>
+        <button type="button" data-period="w" aria-pressed="true">1 Woche</button>
+        <button type="button" data-period="m" aria-pressed="false">1 Monat</button>
+      </div>
+      <div class="seg" role="group" aria-label="Basis">
+        <button type="button" data-basis="abs" aria-pressed="false">Absolute Rendite</button>
+        <button type="button" data-basis="rel" aria-pressed="true">Gegenüber S&amp;P 500</button>
+      </div>
+    </div>
+    <p id="range" class="note"></p>
+    <div id="heat" class="heat"></div>
+    <p id="legend" class="note"></p>
+  </section>
 
   <section id="chartsec" hidden>
     <div class="row">
@@ -122,7 +166,7 @@ svg text { font-family: var(--mono); }
     </div>
   </section>
 
-  <p class="note">Kursdaten: Yahoo Finance über <span class="tick">yfinance</span>, täglich nach US-Handelsschluss aktualisiert. Ratio = relative Stärke gegenüber ihrem gleitenden Durchschnitt. Momentum = Veränderung dieser Ratio. Eine Näherung an den RRG, keine Anlageberatung.</p>
+  <p class="note">Kursdaten: Yahoo Finance über <span class="tick">yfinance</span>, täglich nach US-Handelsschluss aktualisiert. Renditen beruhen auf dividendenbereinigten Schlusskursen; 1 Woche sind 5, 1 Monat 21 Handelstage. Ratio = relative Stärke gegenüber ihrem gleitenden Durchschnitt. Momentum = Veränderung dieser Ratio. Eine Näherung an den RRG, keine Anlageberatung.</p>
 </main>
 
 <script>
@@ -311,9 +355,56 @@ function drawCycle(d) {
   });
 }
 
+/* ---- Heatmap ---- */
+var HEAT = [["XLK", "Technologie"], ["XLC", "Kommunikation"], ["XLY", "Zyklischer Konsum"], ["XLP", "Basiskonsumgüter"],
+  ["XLF", "Finanzwesen"], ["XLV", "Gesundheitswesen"], ["XLI", "Industrie"], ["XLE", "Energie"],
+  ["XLB", "Materialien"], ["XLU", "Versorger"], ["XLRE", "Immobilien"]];
+var PERIODS = { d: { n: 1, scale: 2 }, w: { n: 5, scale: 5 }, m: { n: 21, scale: 10 } };
+var PERIOD = "w", BASIS = "rel";
+try {
+  var sp = localStorage.getItem("sr_period"), sb = localStorage.getItem("sr_basis");
+  if (sp && PERIODS[sp]) PERIOD = sp;
+  if (sb === "abs" || sb === "rel") BASIS = sb;
+} catch (e) {}
+function saveChoice() { try { localStorage.setItem("sr_period", PERIOD); localStorage.setItem("sr_basis", BASIS); } catch (e) {} }
+function retOver(arr, n) { var e = arr.length - 1, s = e - n; return s < 0 ? null : arr[e] / arr[s] - 1; }
+function pct(x) { return fmt(x * 100, 2, true).replace("-", "−") + " %"; }
+function deDate(s) { return s.split("-").reverse().join("."); }
+
+function drawHeat() {
+  var P = PERIODS[PERIOD], e = DATA.dates.length - 1, s = e - P.n;
+  var b = retOver(DATA.series[BENCH], P.n);
+  document.querySelectorAll("[data-period]").forEach(function (el) { el.setAttribute("aria-pressed", el.getAttribute("data-period") === PERIOD); });
+  document.querySelectorAll("[data-basis]").forEach(function (el) { el.setAttribute("aria-pressed", el.getAttribute("data-basis") === BASIS); });
+  if (s < 0 || b === null) { $("heat").innerHTML = ""; $("range").textContent = "Für diesen Zeitraum liegen nicht genug Daten vor."; return; }
+  $("range").textContent = "Schlusskurse: " + deDate(DATA.dates[s]) + " bis " + deDate(DATA.dates[e]);
+  var h = "";
+  HEAT.forEach(function (x) {
+    var r = retOver(DATA.series[x[0]], P.n);
+    var rel = (1 + r) / (1 + b) - 1;
+    var main = BASIS === "rel" ? rel : r;
+    var sub = BASIS === "rel" ? "Rendite " + pct(r) : "vs. S&P 500 " + pct(rel);
+    var v = main * 100, i = Math.min(Math.abs(v) / P.scale, 1), flat = Math.abs(v) < 0.05;
+    var cls = flat ? "flat" : v > 0 ? "pos" : "neg";
+    var mix = flat ? 0 : Math.round((0.15 + 0.85 * i) * 100);
+    h += '<div class="tile ' + cls + (!flat && i > 0.4 ? " strong" : "") + '" style="--m:' + mix + '%" role="group" aria-label="' + x[1] + ' ' + pct(main) + '">' +
+      '<div class="tname">' + x[1] + '</div><div class="tbig">' + pct(main) + '</div>' +
+      '<div class="tsmall">' + x[0] + ' · Sektor-ETF</div><div class="tsmall">' + sub + '</div></div>';
+  });
+  h += '<div class="tile bench" role="group" aria-label="S&amp;P 500 ' + pct(b) + '"><div class="tname">S&amp;P 500 Vergleichswert</div>' +
+    '<div class="tbig">' + pct(b) + '</div><div class="tsmall">SPY · Rendite</div></div>';
+  $("heat").innerHTML = h;
+  var scaleTxt = String(P.scale).replace(".", ",") + " %";
+  $("legend").textContent = (BASIS === "rel"
+    ? "Grün: stärker als der S&P 500, Rot: schwächer. Die Prozentzahl zeigt den Vorsprung bzw. Rückstand gegenüber dem Index."
+    : "Grün: im Plus, Rot: im Minus. Die Prozentzahl zeigt die Rendite des Sektors.") +
+    " Je dunkler die Kachel, desto stärker die Bewegung (volle Farbe ab ±" + scaleTxt + "). Blass: nahe null.";
+}
+/* ---- end Heatmap ---- */
+
 function render() {
   var d = computeAll(DATA, MODE);
-  drawChart(d); drawTable(d); drawFlow(d); drawCycle(d);
+  drawHeat(); drawChart(d); drawTable(d); drawFlow(d); drawCycle(d);
   $("mode-w").setAttribute("aria-pressed", MODE === "w");
   $("mode-d").setAttribute("aria-pressed", MODE === "d");
 }
@@ -329,7 +420,7 @@ function start(data) {
   DATA = data;
   var last = data.dates[data.dates.length - 1].split("-").reverse().join(".");
   $("stand").textContent = "Stand: Handelsschluss " + last;
-  ["chartsec", "flowsec", "cyclesec"].forEach(function (id) { $(id).hidden = false; });
+  ["heatsec", "chartsec", "flowsec", "cyclesec"].forEach(function (id) { $(id).hidden = false; });
   render();
 }
 
@@ -347,6 +438,13 @@ function load() {
 
 $("mode-w").addEventListener("click", function () { MODE = "w"; if (DATA) render(); });
 $("mode-d").addEventListener("click", function () { MODE = "d"; if (DATA) render(); });
+document.querySelectorAll("[data-period]").forEach(function (el) {
+  el.addEventListener("click", function () { PERIOD = el.getAttribute("data-period"); saveChoice(); if (DATA) drawHeat(); });
+});
+document.querySelectorAll("[data-basis]").forEach(function (el) {
+  el.addEventListener("click", function () { BASIS = el.getAttribute("data-basis"); saveChoice(); if (DATA) drawHeat(); });
+});
+$("refresh").addEventListener("click", function () { $("stand").textContent = "Lade Daten…"; load(); });
 load();
 </script>
 </body>
