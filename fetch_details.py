@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import sys
+import time
 
 import pandas as pd
 import yfinance as yf
@@ -153,7 +154,12 @@ def main():
         tickers += [sec] + [t for t, _ in cfg["subs"]] + [t for t, _ in cfg["stocks"]]
     tickers = list(dict.fromkeys(tickers))
 
-    raw = yf.download(tickers, period="6mo", interval="1d", auto_adjust=True, progress=False, threads=True)
+    raw = None
+    for attempt in range(3):
+        raw = yf.download(tickers, period="6mo", interval="1d", auto_adjust=True, progress=False, threads=False)
+        if raw is not None and not raw.empty:
+            break
+        time.sleep(5)
     if raw is None or raw.empty:
         sys.exit("Fehler: Yahoo Finance hat keine Daten geliefert.")
 
