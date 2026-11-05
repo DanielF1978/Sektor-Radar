@@ -24,12 +24,13 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { background: var(--bg); }
 body {
   margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.5;
   padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left));
 }
-main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+main { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
 h1 { font-size: 1.7rem; line-height: 1.1; margin: 0; }
 h2 { font-size: 1.1rem; margin: 0 0 4px; }
 p { margin: 0; max-width: 65ch; }
@@ -85,6 +86,21 @@ svg text { font-family: var(--mono); }
 .tile.neg { background: color-mix(in srgb, var(--neg) var(--m), var(--neu)); }
 .tile.strong { color: var(--on-strong); }
 .tile.bench { background: var(--bench-bg); color: var(--bench-fg); }
+button.tile { font: inherit; text-align: left; border: 0; cursor: pointer; width: 100%; }
+button.tile:hover { filter: brightness(1.06); }
+.tile.sel { outline: 3px solid var(--fg); outline-offset: 2px; }
+.tile .tname, .tile .tbig, .tile .tsmall { display: block; }
+.dhead { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline; }
+.up-t { color: var(--lead); } .down-t { color: var(--lag); }
+td.nm { white-space: normal; min-width: 150px; }
+td.ins, th.ins { white-space: normal; min-width: 110px; }
+td.nm small { display: block; color: var(--muted); font-size: .72rem; }
+tr.refrow td { background: color-mix(in srgb, var(--accent) 8%, transparent); font-weight: 600; }
+.ibar { display: flex; height: 10px; border-radius: 2px; overflow: hidden; background: var(--line); }
+.ibar .b { background: var(--lead); } .ibar .s { background: var(--lag); }
+.ilabels { display: flex; justify-content: space-between; gap: 8px; font-size: .85rem; font-weight: 600; }
+svg.ichart { width: 100%; height: auto; display: block; }
+td.nm small .linkbtn { font-size: inherit; padding: 0; }
 .tile .tname { font-size: .85rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
 .tile .tbig { font-size: 1.6rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .tile .tsmall { font-size: .72rem; opacity: .85; line-height: 1.35; }
@@ -123,6 +139,23 @@ svg text { font-family: var(--mono); }
     <p id="range" class="note"></p>
     <div id="heat" class="heat"></div>
     <p id="legend" class="note"></p>
+  </section>
+
+  <section id="detailsec" hidden>
+    <div class="dhead">
+      <h2 id="dtitle">Details</h2>
+      <button type="button" id="dclose" class="linkbtn">Schließen</button>
+    </div>
+    <p class="note" id="dnote"></p>
+    <div id="dbody" style="display:flex;flex-direction:column;gap:10px"></div>
+  </section>
+
+  <section id="insidersec" hidden>
+    <div class="dhead">
+      <h2 id="ititle">Insider</h2>
+      <button type="button" id="iclose" class="linkbtn">Schließen</button>
+    </div>
+    <div id="ibody" style="display:flex;flex-direction:column;gap:10px"></div>
   </section>
 
   <section id="chartsec" hidden>
@@ -387,9 +420,9 @@ function drawHeat() {
     var v = main * 100, i = Math.min(Math.abs(v) / P.scale, 1), flat = Math.abs(v) < 0.05;
     var cls = flat ? "flat" : v > 0 ? "pos" : "neg";
     var mix = flat ? 0 : Math.round((0.15 + 0.85 * i) * 100);
-    h += '<div class="tile ' + cls + (!flat && i > 0.4 ? " strong" : "") + '" style="--m:' + mix + '%" role="group" aria-label="' + x[1] + ' ' + pct(main) + '">' +
-      '<div class="tname">' + x[1] + '</div><div class="tbig">' + pct(main) + '</div>' +
-      '<div class="tsmall">' + x[0] + ' · Sektor-ETF</div><div class="tsmall">' + sub + '</div></div>';
+    h += '<button type="button" class="tile ' + cls + (!flat && i > 0.4 ? " strong" : "") + (SEL === x[0] ? " sel" : "") + '" style="--m:' + mix + '%" data-t="' + x[0] + '" aria-pressed="' + (SEL === x[0]) + '">' +
+      '<span class="tname">' + x[1] + '</span><span class="tbig">' + pct(main) + '</span>' +
+      '<span class="tsmall">' + x[0] + ' · Sektor-ETF</span><span class="tsmall">' + sub + '</span></button>';
   });
   h += '<div class="tile bench" role="group" aria-label="S&amp;P 500 ' + pct(b) + '"><div class="tname">S&amp;P 500 Vergleichswert</div>' +
     '<div class="tbig">' + pct(b) + '</div><div class="tsmall">SPY · Rendite</div></div>';
@@ -398,13 +431,253 @@ function drawHeat() {
   $("legend").textContent = (BASIS === "rel"
     ? "Grün: stärker als der S&P 500, Rot: schwächer. Die Prozentzahl zeigt den Vorsprung bzw. Rückstand gegenüber dem Index."
     : "Grün: im Plus, Rot: im Minus. Die Prozentzahl zeigt die Rendite des Sektors.") +
-    " Je dunkler die Kachel, desto stärker die Bewegung (volle Farbe ab ±" + scaleTxt + "). Blass: nahe null.";
+    " Je dunkler die Kachel, desto stärker die Bewegung (volle Farbe ab ±" + scaleTxt + "). Blass: nahe null. Tippe auf eine Kachel für Details zu Teilbranchen und Einzelwerten.";
 }
 /* ---- end Heatmap ---- */
 
+/* ---- Detailansicht ---- */
+var SEL = null, DET = null;
+var PKEY = { d: { r: "r1", v: "rv1" }, w: { r: "r5", v: "rv5" }, m: { r: "r21", v: "rv21" } };
+var KIND = { sector: "Sektor", sub: "Teilbranche", stock: "Einzelwert" };
+function pc(x) { return x === null || x === undefined ? "–" : fmt(x, 2, true).replace("-", "−") + " %"; }
+function cls(x) { return x === null || x === undefined || Math.abs(x) < 0.005 ? "" : x > 0 ? "up-t" : "down-t"; }
+function signal(r, rv, cmf) {
+  if (r === null || rv === null || cmf === null) return "";
+  if (r > 0 && rv >= 1.2 && cmf > 0.05) return '<span class="pill q-lead">Kaufdruck</span>';
+  if (r < 0 && rv >= 1.2 && cmf < -0.05) return '<span class="pill q-lag">Verkaufsdruck</span>';
+  return "";
+}
+function sectorName(t) { for (var i = 0; i < HEAT.length; i++) if (HEAT[i][0] === t) return HEAT[i][1]; return t; }
+
+function drawDetail() {
+  var sec = $("detailsec");
+  if (!SEL) { sec.hidden = true; return; }
+  sec.hidden = false;
+  ensureInsiders();
+  $("dtitle").textContent = sectorName(SEL) + " im Detail";
+  var P = PKEY[PERIOD], plabel = { d: "1 Tag", w: "1 Woche", m: "1 Monat" }[PERIOD];
+  if (DET === null) { $("dnote").textContent = ""; $("dbody").innerHTML = '<p class="note">Lade Detaildaten…</p>'; return; }
+  if (!DET || !DET.sectors || !DET.sectors[SEL]) {
+    $("dnote").textContent = "";
+    $("dbody").innerHTML = '<p class="note">Für diesen Sektor liegen noch keine Detaildaten vor. Starte im Repository unter Actions den Job „Kurse aktualisieren“ einmal von Hand.</p>';
+    return;
+  }
+  var items = DET.sectors[SEL].items;
+  var ref = items.filter(function (x) { return x.kind === "sector"; })[0];
+  var rows = items.filter(function (x) { return x.kind !== "sector"; }).map(function (x) {
+    var rel = x[P.r] === null || ref[P.r] === null ? null : ((1 + x[P.r] / 100) / (1 + ref[P.r] / 100) - 1) * 100;
+    return { x: x, rel: rel };
+  }).sort(function (a, b) { return (b.rel === null ? -999 : b.rel) - (a.rel === null ? -999 : a.rel); });
+  $("dnote").textContent = "Zeitraum: " + plabel + " · Stand " + (DET.date ? deDate(DET.date) : "unbekannt") + ". „vs. Sektor“ vergleicht mit dem Sektor-ETF " + SEL + ".";
+
+  function tr(x, rel, isRef) {
+    return '<tr' + (isRef ? ' class="refrow"' : '') + '><td class="nm"><span class="tick">' + x.t + '</span> ' + x.name + '<small>' + KIND[x.kind] + (x.kind === "stock" ? ' · <button type="button" class="linkbtn" data-ins="' + x.t + '">Insider ›</button>' : '') + '</small></td>' +
+      '<td class="num ' + cls(x[P.r]) + '">' + pc(x[P.r]) + '</td>' +
+      '<td class="num ' + cls(rel) + '">' + (isRef ? "–" : pc(rel)) + '</td>' +
+      '<td class="num">' + (x[P.v] === null ? "–" : fmt(x[P.v], 2) + "×") + '</td>' +
+      '<td class="num">' + (x.udv === null ? "–" : fmt(x.udv, 2)) + '</td>' +
+      '<td class="num ' + cls(x.cmf) + '">' + (x.cmf === null ? "–" : fmt(x.cmf, 2, true).replace("-", "−")) + '</td>' +
+      '<td>' + signal(x[P.r], x[P.v], x.cmf) + '</td>' + insCells(x) + '</tr>';
+  }
+  var t = '<div class="panel scroll"><table><thead><tr><th>Wert</th><th class="num">Rendite</th><th class="num">vs. Sektor</th><th class="num">Rel. Vol.</th><th class="num">Up/Down</th><th class="num">CMF</th><th>Signal</th><th class="num ins">Insider-Käufe 90 T</th><th class="num ins">Insider-Verkäufe 90 T</th></tr></thead><tbody>' +
+    tr(ref, null, true) + rows.map(function (r) { return tr(r.x, r.rel, false); }).join("") + '</tbody></table></div>';
+
+  var withRel = rows.filter(function (r) { return r.rel !== null; });
+  var best = withRel.slice(0, 3).map(function (r) { return r.x.name + " (" + pc(r.rel) + ")"; }).join(", ");
+  var worst = withRel.slice(-2).reverse().map(function (r) { return r.x.name + " (" + pc(r.rel) + ")"; }).join(", ");
+  var buy = rows.filter(function (r) { return signal(r.x[P.r], r.x[P.v], r.x.cmf).indexOf("Kaufdruck") >= 0; }).length;
+  var sell = rows.filter(function (r) { return signal(r.x[P.r], r.x[P.v], r.x.cmf).indexOf("Verkaufsdruck") >= 0; }).length;
+  var v = '<div class="panel"><p><strong>Am stärksten gegenüber dem Sektor:</strong> ' + best + '.</p>' +
+    '<p style="margin-top:6px"><strong>Am schwächsten:</strong> ' + worst + '.</p>' +
+    '<p style="margin-top:6px"><strong>Volumen-Signale:</strong> Kaufdruck bei ' + buy + ', Verkaufsdruck bei ' + sell + ' von ' + rows.length + ' Werten.</p>' + insiderSummary(rows) + '</div>';
+  var legend = '<p class="note"><strong>Rel. Vol.</strong>: durchschnittliches Volumen im Zeitraum im Verhältnis zu den 20 Handelstagen davor. ' +
+    '<strong>Up/Down</strong>: Volumen an Aufwärtstagen geteilt durch Volumen an Abwärtstagen (20 Tage, über 1 = mehr Umsatz bei steigenden Kursen). ' +
+    '<strong>CMF</strong>: Chaikin Money Flow über 20 Tage, von −1 bis +1, positiv wenn Schlusskurse eher im oberen Teil der Tagesspanne liegen. ' +
+    '<strong>Signal</strong>: Kurs im Plus bzw. Minus, Rel. Vol. ab 1,2× und CMF jenseits von ±0,05. Volumen zeigt Aktivität, nicht, wer kauft; das Signal ist ein Hinweis und keine Bestätigung von Fondskäufen. ' +
+    '<strong>Insider</strong>: Käufe und Verkäufe von Führungskräften, Verwaltungsräten und 10-%-Eignern am offenen Markt (SEC Form 4, letzte 90 Tage, Verkäufe ab 25 Tsd. $). Ein Cluster liegt vor, wenn mindestens 3 verschiedene Insider gekauft haben.</p>';
+  $("dbody").innerHTML = v + t + legend;
+}
+
+var detailsLoaded = false;
+function loadDetails() {
+  var urls = ["https://raw.githubusercontent.com/DanielF1978/Sektor-Radar/main/details.json", "details.json"];
+  function tryNext(i) {
+    if (i >= urls.length) { DET = false; drawDetail(); return; }
+    fetch(urls[i] + (i === 0 ? "?t=" + Date.now() : ""), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { DET = j; drawDetail(); })
+      .catch(function () { tryNext(i + 1); });
+  }
+  tryNext(0);
+}
+/* ---- Insider ---- */
+var INS = null, insRequested = false, INSSEL = null, INSFILTER = "all", INSALL = false;
+var MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+function ensureInsiders() {
+  if (insRequested) return;
+  insRequested = true;
+  var urls = ["https://raw.githubusercontent.com/DanielF1978/Sektor-Radar/main/insiders.json", "insiders.json"];
+  (function tryNext(i) {
+    if (i >= urls.length) { INS = false; drawDetail(); drawInsider(); return; }
+    fetch(urls[i] + (i === 0 ? "?t=" + Date.now() : ""), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { INS = j; drawDetail(); drawInsider(); })
+      .catch(function () { tryNext(i + 1); });
+  })(0);
+}
+
+function usd(v) {
+  if (v === null || v === undefined) return "–";
+  if (v >= 1e6) return (v / 1e6).toFixed(1).replace(".", ",") + " Mio. $";
+  if (v >= 1e3) return Math.round(v / 1e3) + " Tsd. $";
+  return Math.round(v) + " $";
+}
+
+function insAgg(t, days) {
+  var e = INS && INS.tickers && INS.tickers[t];
+  if (!e) return null;
+  var cut = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  var a = { buy: 0, sell: 0, buyers: {}, nb: 0 };
+  e.tx.forEach(function (x) {
+    if (x.d < cut) return;
+    if (x.a === "B") { a.buy += x.v; a.buyers[x.n] = 1; } else a.sell += x.v;
+  });
+  a.nb = Object.keys(a.buyers).length;
+  a.cluster = a.nb >= 3;
+  return a;
+}
+
+function insCells(x) {
+  if (x.kind !== "stock") return "<td></td><td></td>";
+  if (INS === null) return '<td class="num note ins" colspan="2">lädt…</td>';
+  var a = INS ? insAgg(x.t, 90) : null;
+  if (!a) return '<td class="num ins">–</td><td class="num ins">–</td>';
+  return '<td class="num ins">' + (a.buy > 0
+      ? '<span class="up-t">' + usd(a.buy) + '</span> · ' + a.nb + ' Käufer' + (a.cluster ? ' <span class="pill q-lead">Cluster</span>' : "")
+      : "–") + '</td>' +
+    '<td class="num ins">' + (a.sell > 0 ? '<span class="down-t">' + usd(a.sell) + '</span>' : "–") + '</td>';
+}
+
+function insiderSummary(rows) {
+  if (INS === null) return "";
+  if (!INS) return '<p class="note" style="margin-top:6px">Insider-Daten sind noch nicht vorhanden. Starte im Repository unter Actions den Job „Insider-Daten“ einmal von Hand.</p>';
+  var buy = 0, sell = 0, clusters = [];
+  rows.forEach(function (r) {
+    if (r.x.kind !== "stock") return;
+    var a = insAgg(r.x.t, 90);
+    if (!a) return;
+    buy += a.buy; sell += a.sell;
+    if (a.cluster) clusters.push(r.x.name + " (" + a.nb + " Käufer)");
+  });
+  return '<p style="margin-top:6px"><strong>Insider (90 Tage, größte Einzelwerte):</strong> Käufe ' + usd(buy) + ', Verkäufe ' + usd(sell) + '. ' +
+    (clusters.length ? "Cluster-Käufe bei " + clusters.join(", ") + "." : "Keine Cluster-Käufe.") + '</p>';
+}
+
+function insChart(e, list) {
+  var dates = INS.pxdates || [], px = e.px;
+  if (!px || !dates.length) return '<p class="note">Kursverlauf nicht verfügbar.</p>';
+  var pts = [];
+  for (var i = 0; i < dates.length; i++) if (px[i] !== null && px[i] !== undefined) pts.push({ t: Date.parse(dates[i]), c: px[i] });
+  if (pts.length < 20) return "";
+  var W = Math.max(300, Math.min(640, $("insidersec").clientWidth - 30)), H = W < 500 ? 220 : 260, L = 40, R = 10, T = 12, B = 24;
+  var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  var lo = Infinity, hi = -Infinity;
+  pts.forEach(function (p) { lo = Math.min(lo, p.c); hi = Math.max(hi, p.c); });
+  var pad = (hi - lo) * 0.1 || 1; lo -= pad; hi += pad;
+  function X(t) { return L + (t - t0) / (t1 - t0) * (W - L - R); }
+  function Y(v) { return T + (hi - v) / (hi - lo) * (H - T - B); }
+  var s = "", k;
+  for (k = 0; k < 4; k++) {
+    var gv = lo + (hi - lo) * k / 3, gy = Y(gv);
+    s += '<line x1="' + L + '" y1="' + gy.toFixed(1) + '" x2="' + (W - R) + '" y2="' + gy.toFixed(1) + '" stroke="var(--line)"/>' +
+      '<text x="' + (L - 6) + '" y="' + (gy + 3).toFixed(1) + '" font-size="10" fill="var(--muted)" text-anchor="end">' + gv.toFixed(0) + '</text>';
+  }
+  var lastM = -1, cnt = 0;
+  pts.forEach(function (p) {
+    var d = new Date(p.t), m = d.getUTCMonth();
+    if (m !== lastM) {
+      if (lastM !== -1 && cnt % 2 === 0) s += '<text x="' + X(p.t).toFixed(1) + '" y="' + (H - 8) + '" font-size="10" fill="var(--muted)" text-anchor="middle">' + MONTHS[m] + '</text>';
+      if (lastM !== -1) cnt++;
+      lastM = m;
+    }
+  });
+  var line = pts.map(function (p) { return X(p.t).toFixed(1) + "," + Y(p.c).toFixed(1); }).join(" ");
+  s += '<polygon points="' + X(t0).toFixed(1) + "," + Y(lo).toFixed(1) + " " + line + " " + X(t1).toFixed(1) + "," + Y(lo).toFixed(1) +
+    '" fill="var(--accent)" fill-opacity="0.08"/>' +
+    '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="1.5"/>';
+  var maxV = 1;
+  list.forEach(function (x) { maxV = Math.max(maxV, x.v); });
+  var ordered = list.slice().sort(function (a, b) { return a.a === b.a ? 0 : a.a === "S" ? -1 : 1; });
+  ordered.forEach(function (x) {
+    var tm = Date.parse(x.d);
+    if (tm < t0 || tm > t1) return;
+    var c = x.p;
+    for (var j = pts.length - 1; j >= 0; j--) if (pts[j].t <= tm) { c = pts[j].c; break; }
+    var r = 4 + Math.sqrt(x.v / maxV) * 8, cx = X(tm), cy = Y(c), buy = x.a === "B";
+    var tri = buy
+      ? [cx, cy - r, cx - r, cy + r * 0.8, cx + r, cy + r * 0.8]
+      : [cx, cy + r, cx - r, cy - r * 0.8, cx + r, cy - r * 0.8];
+    s += '<polygon points="' + tri.map(function (n) { return n.toFixed(1); }).join(" ").replace(/(\S+) (\S+) (\S+) (\S+) (\S+) (\S+)/, "$1,$2 $3,$4 $5,$6") +
+      '" fill="var(--' + (buy ? "lead" : "lag") + ')" fill-opacity="0.85" stroke="var(--surface)" stroke-width="1"><title>' +
+      deDate(x.d) + " · " + x.n + " · " + (buy ? "Kauf " : "Verkauf ") + usd(x.v) + '</title></polygon>';
+  });
+  return '<svg class="ichart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Kurs der letzten 12 Monate mit Insider-Käufen und -Verkäufen">' + s + '</svg>';
+}
+
+function drawInsider() {
+  var sec = $("insidersec");
+  if (!INSSEL) { sec.hidden = true; return; }
+  sec.hidden = false;
+  var e = INS && INS.tickers && INS.tickers[INSSEL];
+  $("ititle").textContent = (e ? e.name : INSSEL) + " (" + INSSEL + "): Insider-Käufe und -Verkäufe";
+  if (INS === null) { $("ibody").innerHTML = '<p class="note">Lade Insider-Daten…</p>'; return; }
+  if (!e) { $("ibody").innerHTML = '<p class="note">Für diesen Wert liegen keine Insider-Daten vor.</p>'; return; }
+  var tx = e.tx, buys = tx.filter(function (x) { return x.a === "B"; }), sells = tx.filter(function (x) { return x.a === "S"; });
+  var sumB = 0, sumS = 0;
+  buys.forEach(function (x) { sumB += x.v; }); sells.forEach(function (x) { sumS += x.v; });
+  var a90 = insAgg(INSSEL, 90);
+  var head = a90.buy > 0
+    ? a90.nb + (a90.nb === 1 ? " Insider kaufte " : " Insider kauften ") + usd(a90.buy) + " in den letzten 90 Tagen (gegenüber " + usd(a90.sell) + " Verkäufen)."
+    : "Keine Insider-Käufe in den letzten 90 Tagen" + (a90.sell > 0 ? "; Verkäufe: " + usd(a90.sell) + "." : ".");
+  var total = sumB + sumS, wB = total > 0 ? sumB / total * 100 : 0;
+  var list = INSFILTER === "B" ? buys : INSFILTER === "S" ? sells : tx;
+  var shown = INSALL ? list : list.slice(0, 15);
+
+  var h = '<p class="note">Käufe und Verkäufe am offenen Markt durch Führungskräfte, Verwaltungsräte und 10-%-Eigner (SEC Form 4, letzte 12 Monate). Verkäufe unter ' +
+    usd(INS.min_sell_value || 25000) + ' sind nicht enthalten.</p>';
+  h += '<div class="panel"><p><strong>' + head + '</strong></p>' +
+    (a90.cluster ? '<p style="margin-top:6px"><span class="pill q-lead">Cluster-Kauf</span> ' + a90.nb + ' verschiedene Insider haben in den letzten 90 Tagen gekauft.</p>' : "") + '</div>';
+  h += '<div><div class="ilabels"><span class="up-t">Gekauft ' + usd(sumB) + '</span><span class="down-t">Verkauft ' + usd(sumS) + '</span></div>' +
+    '<div class="ibar" role="img" aria-label="Verhältnis Käufe zu Verkäufen"><span class="b" style="width:' + wB.toFixed(1) + '%"></span><span class="s" style="width:' + (total > 0 ? (100 - wB).toFixed(1) : 0) + '%"></span></div>' +
+    '<p class="note" style="margin-top:4px">In den letzten 12 Monaten: ' + buys.length + ' Käufe, ' + sells.length + ' Verkäufe.</p></div>';
+  h += '<div class="seg" role="group" aria-label="Filter" style="align-self:flex-start">' +
+    [["all", "Alle " + tx.length], ["B", "Käufe " + buys.length], ["S", "Verkäufe " + sells.length]].map(function (f) {
+      return '<button type="button" data-insf="' + f[0] + '" aria-pressed="' + (INSFILTER === f[0]) + '">' + f[1] + '</button>';
+    }).join("") + '</div>';
+  h += '<div class="panel">' + insChart(e, list) +
+    '<p class="note" style="margin-top:6px">▲ Kauf, ▼ Verkauf. Je größer die Markierung, desto höher der Betrag.</p></div>';
+  h += '<div class="panel scroll"><table><thead><tr><th>Insider</th><th>Datum</th><th>Aktion</th><th class="num">Aktien</th><th class="num">Kurs</th><th class="num">Wert</th></tr></thead><tbody>' +
+    shown.map(function (x) {
+      var buy = x.a === "B";
+      return '<tr><td class="nm">' + x.n + '<small>' + (x.r || "") + '</small></td><td>' + deDate(x.d) + '</td><td>' +
+        (buy ? '<span class="pill q-lead">Kauf</span>' : '<span class="pill q-lag">Verkauf</span>') +
+        (x.pl ? ' <span class="note" title="Transaktion im Rahmen eines Handelsplans (Rule 10b5-1)">Plan</span>' : "") + '</td>' +
+        '<td class="num">' + x.s.toLocaleString("de-DE") + '</td><td class="num">' + fmt(x.p, 2) + ' $</td><td class="num">' + usd(x.v) + '</td></tr>';
+    }).join("") + (shown.length ? "" : '<tr><td colspan="6" class="note">Keine Einträge.</td></tr>') + '</tbody></table></div>';
+  if (!INSALL && list.length > 15) h += '<button type="button" class="linkbtn" data-insall="1" style="align-self:flex-start">Alle ' + list.length + ' anzeigen</button>';
+  h += '<p class="note">Insider verkaufen aus vielen Gründen, etwa für Steuern, Diversifikation oder nach festen Aktienplänen („Plan“ markiert Transaktionen im Rahmen eines Handelsplans nach Rule 10b5-1). Käufe am offenen Markt gelten als das aussagekräftigere Signal. ' +
+    'Stand der Insider-Daten: ' + (INS.updated ? deDate(INS.updated.slice(0, 10)) : "unbekannt") + '.' +
+    (e.complete ? "" : " Die Historie wird noch aufgebaut, ältere Meldungen können fehlen.") + '</p>';
+  $("ibody").innerHTML = h;
+}
+/* ---- end Insider ---- */
+
+/* ---- end Detailansicht ---- */
+
 function render() {
   var d = computeAll(DATA, MODE);
-  drawHeat(); drawChart(d); drawTable(d); drawFlow(d); drawCycle(d);
+  drawHeat(); drawDetail(); drawChart(d); drawTable(d); drawFlow(d); drawCycle(d);
   $("mode-w").setAttribute("aria-pressed", MODE === "w");
   $("mode-d").setAttribute("aria-pressed", MODE === "d");
 }
@@ -439,12 +712,36 @@ function load() {
 $("mode-w").addEventListener("click", function () { MODE = "w"; if (DATA) render(); });
 $("mode-d").addEventListener("click", function () { MODE = "d"; if (DATA) render(); });
 document.querySelectorAll("[data-period]").forEach(function (el) {
-  el.addEventListener("click", function () { PERIOD = el.getAttribute("data-period"); saveChoice(); if (DATA) drawHeat(); });
+  el.addEventListener("click", function () { PERIOD = el.getAttribute("data-period"); saveChoice(); if (DATA) { drawHeat(); drawDetail(); } });
 });
 document.querySelectorAll("[data-basis]").forEach(function (el) {
   el.addEventListener("click", function () { BASIS = el.getAttribute("data-basis"); saveChoice(); if (DATA) drawHeat(); });
 });
-$("refresh").addEventListener("click", function () { $("stand").textContent = "Lade Daten…"; load(); });
+$("refresh").addEventListener("click", function () { $("stand").textContent = "Lade Daten…"; DET = null; INS = null; insRequested = false; load(); loadDetails(); });
+$("heat").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("button.tile") : null;
+  if (!b) return;
+  var t = b.getAttribute("data-t");
+  SEL = SEL === t ? null : t;
+  INSSEL = null; drawInsider();
+  drawHeat(); drawDetail();
+  if (SEL) { var el = $("detailsec"); if (el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+});
+$("dclose").addEventListener("click", function () { SEL = null; INSSEL = null; drawHeat(); drawDetail(); drawInsider(); });
+$("dbody").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-ins]") : null;
+  if (!b) return;
+  INSSEL = b.getAttribute("data-ins"); INSFILTER = "all"; INSALL = false;
+  drawInsider();
+  var el = $("insidersec"); if (el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("insidersec").addEventListener("click", function (ev) {
+  var f = ev.target.closest ? ev.target.closest("[data-insf]") : null;
+  if (f) { INSFILTER = f.getAttribute("data-insf"); INSALL = false; drawInsider(); return; }
+  if (ev.target.closest && ev.target.closest("[data-insall]")) { INSALL = true; drawInsider(); }
+});
+$("iclose").addEventListener("click", function () { INSSEL = null; drawInsider(); });
+loadDetails();
 load();
 </script>
 </body>
