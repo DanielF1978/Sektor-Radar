@@ -437,7 +437,30 @@ function drawHeat() {
 
 /* ---- Detailansicht ---- */
 var SEL = null, DET = null;
-var PKEY = { d: { r: "r1", v: "rv1" }, w: { r: "r5", v: "rv5" }, m: { r: "r21", v: "rv21" } };
+var PKEY = { d: { r: "r1", v: "rv1", f: "f1", fp: "fp1" }, w: { r: "r5", v: "rv5", f: "f5", fp: "fp5" }, m: { r: "r21", v: "rv21", f: "f21", fp: "fp21" } };
+function flowFmt(m) {
+  var a = Math.abs(m), s = m > 0 ? "+" : m < 0 ? "−" : "";
+  return s + (a >= 1000 ? (a / 1000).toFixed(1).replace(".", ",") + " Mrd. $" : Math.round(a) + " Mio. $");
+}
+function flowTd(x, P) {
+  if (x.kind === "stock") return "<td></td>";
+  var f = x[P.f];
+  if (f === undefined || f === null) return '<td class="num">–</td>';
+  return '<td class="num ' + cls(f) + '">' + flowFmt(f) + '<br><span class="note">' + pc(x[P.fp]) + '</span></td>';
+}
+function flowSummary(ref, rows, P) {
+  var f = ref[P.f];
+  if (f === undefined || f === null) return '<p class="note" style="margin-top:6px">ETF-Zufluss: Für diesen Zeitraum liegen noch keine verlässlichen Daten vor (die Historie baut sich ab dem ersten Lauf Tag für Tag auf; bei veralteten oder unplausiblen Werten bleibt das Feld leer).</p>';
+  var subs = rows.filter(function (r) { return r.x.kind === "sub" && r.x[P.f] !== undefined && r.x[P.f] !== null; })
+    .sort(function (a, b) { return b.x[P.f] - a.x[P.f]; });
+  var t = '<p style="margin-top:6px"><strong>ETF-Zufluss (geschätzt):</strong> ' + ref.t + ' ' + flowFmt(f) + ' (' + pc(ref[P.fp]) + ' des Fondsvermögens)';
+  if (subs.length > 1) {
+    var lo = subs[subs.length - 1];
+    t += '. Teilbranchen: ' + (subs[0].x[P.f] > 0 ? 'größter Zufluss ' : 'schwächster Wert ') + subs[0].x.name + ' ' + flowFmt(subs[0].x[P.f]) +
+      ', ' + (lo.x[P.f] < 0 ? 'größter Abfluss ' : 'kleinster Zufluss ') + lo.x.name + ' ' + flowFmt(lo.x[P.f]);
+  }
+  return t + '.</p>';
+}
 var KIND = { sector: "Sektor", sub: "Teilbranche", stock: "Einzelwert" };
 function pc(x) { return x === null || x === undefined ? "–" : fmt(x, 2, true).replace("-", "−") + " %"; }
 function cls(x) { return x === null || x === undefined || Math.abs(x) < 0.005 ? "" : x > 0 ? "up-t" : "down-t"; }
@@ -477,9 +500,9 @@ function drawDetail() {
       '<td class="num">' + (x[P.v] === null ? "–" : fmt(x[P.v], 2) + "×") + '</td>' +
       '<td class="num">' + (x.udv === null ? "–" : fmt(x.udv, 2)) + '</td>' +
       '<td class="num ' + cls(x.cmf) + '">' + (x.cmf === null ? "–" : fmt(x.cmf, 2, true).replace("-", "−")) + '</td>' +
-      '<td>' + signal(x[P.r], x[P.v], x.cmf) + '</td>' + insCells(x) + '</tr>';
+      flowTd(x, P) + '<td>' + signal(x[P.r], x[P.v], x.cmf) + '</td>' + insCells(x) + '</tr>';
   }
-  var t = '<div class="panel scroll"><table><thead><tr><th>Wert</th><th class="num">Rendite</th><th class="num">vs. Sektor</th><th class="num">Rel. Vol.</th><th class="num">Up/Down</th><th class="num">CMF</th><th>Signal</th><th class="num ins">Insider-Käufe 90 T</th><th class="num ins">Insider-Verkäufe 90 T</th></tr></thead><tbody>' +
+  var t = '<div class="panel scroll"><table><thead><tr><th>Wert</th><th class="num">Rendite</th><th class="num">vs. Sektor</th><th class="num">Rel. Vol.</th><th class="num">Up/Down</th><th class="num">CMF</th><th class="num">ETF-Zufluss</th><th>Signal</th><th class="num ins">Insider-Käufe 90 T</th><th class="num ins">Insider-Verkäufe 90 T</th></tr></thead><tbody>' +
     tr(ref, null, true) + rows.map(function (r) { return tr(r.x, r.rel, false); }).join("") + '</tbody></table></div>';
 
   var withRel = rows.filter(function (r) { return r.rel !== null; });
@@ -489,11 +512,12 @@ function drawDetail() {
   var sell = rows.filter(function (r) { return signal(r.x[P.r], r.x[P.v], r.x.cmf).indexOf("Verkaufsdruck") >= 0; }).length;
   var v = '<div class="panel"><p><strong>Am stärksten gegenüber dem Sektor:</strong> ' + best + '.</p>' +
     '<p style="margin-top:6px"><strong>Am schwächsten:</strong> ' + worst + '.</p>' +
-    '<p style="margin-top:6px"><strong>Volumen-Signale:</strong> Kaufdruck bei ' + buy + ', Verkaufsdruck bei ' + sell + ' von ' + rows.length + ' Werten.</p>' + insiderSummary(rows) + '</div>';
+    '<p style="margin-top:6px"><strong>Volumen-Signale:</strong> Kaufdruck bei ' + buy + ', Verkaufsdruck bei ' + sell + ' von ' + rows.length + ' Werten.</p>' + flowSummary(ref, rows, P) + insiderSummary(rows) + '</div>';
   var legend = '<p class="note"><strong>Rel. Vol.</strong>: durchschnittliches Volumen im Zeitraum im Verhältnis zu den 20 Handelstagen davor. ' +
     '<strong>Up/Down</strong>: Volumen an Aufwärtstagen geteilt durch Volumen an Abwärtstagen (20 Tage, über 1 = mehr Umsatz bei steigenden Kursen). ' +
     '<strong>CMF</strong>: Chaikin Money Flow über 20 Tage, von −1 bis +1, positiv wenn Schlusskurse eher im oberen Teil der Tagesspanne liegen. ' +
     '<strong>Signal</strong>: Kurs im Plus bzw. Minus, Rel. Vol. ab 1,2× und CMF jenseits von ±0,05. Volumen zeigt Aktivität, nicht, wer kauft; das Signal ist ein Hinweis und keine Bestätigung von Fondskäufen. ' +
+    '<strong>ETF-Zufluss</strong>: geschätzt aus dem täglich festgehaltenen Fondsvermögen (Yahoo Finance) abzüglich der reinen Kursentwicklung des Fonds, darunter die Veränderung in Prozent des Fondsvermögens. Die Historie baut sich ab dem ersten Lauf auf: 1 Tag nach ca. 2 Tagen, 1 Woche nach ca. 1 Woche, 1 Monat nach ca. 4 Wochen. Ist der Wert veraltet, unverändert oder durch einen Aktiensplit verzerrt, steht „–“. Die Zahlen weichen von den offiziellen Angaben der Fondsanbieter ab. ' +
     '<strong>Insider</strong>: Käufe und Verkäufe von Führungskräften, Verwaltungsräten und 10-%-Eignern am offenen Markt (SEC Form 4, letzte 90 Tage, Verkäufe ab 25 Tsd. $). Ein Cluster liegt vor, wenn mindestens 3 verschiedene Insider gekauft haben.</p>';
   $("dbody").innerHTML = v + t + legend;
 }
