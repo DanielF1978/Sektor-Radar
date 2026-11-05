@@ -21,6 +21,9 @@ jobs:
         run: pip install yfinance
       - name: Kurse holen
         run: python fetch_data.py
+      - name: Details holen (Teilbranchen und Einzelwerte)
+        continue-on-error: true
+        run: python fetch_details.py
       - name: Quadrantenwechsel melden
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -31,6 +34,8 @@ jobs:
           git config user.name "sektor-radar-bot"
           git config user.email "actions@users.noreply.github.com"
           git add data.json state.json
+          git add details.json 2>/dev/null || true
+          git add fund_snapshots.json 2>/dev/null || true
           git diff --staged --quiet && exit 0
           git commit -m "Kurse und Status aktualisiert"
           for i in 1 2 3; do
