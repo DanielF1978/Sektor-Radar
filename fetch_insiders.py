@@ -166,7 +166,7 @@ def fetch_prices(tickers):
     """12 Monate Schlusskurse (fuer den Chart). Gibt (Daten, {Ticker: Werte}) zurueck, bei Fehler leer."""
     try:
         import yfinance as yf
-        raw = yf.download(tickers, period="1y", interval="1d", auto_adjust=True, progress=False, threads=True)
+        raw = yf.download(tickers, period="1y", interval="1d", auto_adjust=True, progress=False, threads=False)
         close = raw["Close"]
         dates = [d.strftime("%Y-%m-%d") for d in close.index]
         px = {}
