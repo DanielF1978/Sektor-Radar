@@ -1,7 +1,7 @@
 {
  "d": {
   "XLB": "Leading",
-  "XLC": "Lagging",
+  "XLC": "Improving",
   "XLE": "Lagging",
   "XLF": "Leading",
   "XLI": "Leading",
@@ -12,5 +12,5 @@
   "XLV": "Leading",
   "XLY": "Leading"
  },
- "d_date": "2026-11-04"
+ "d_date": "2026-11-05"
 }
