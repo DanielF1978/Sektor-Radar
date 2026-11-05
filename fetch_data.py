@@ -2,17 +2,23 @@
 import datetime
 import json
 import sys
+import time
 
 import yfinance as yf
 
 TICKERS = ["SPY", "XLK", "XLF", "XLY", "XLC", "XLI", "XLB", "XLE", "XLV", "XLP", "XLU", "XLRE"]
 
-raw = yf.download(TICKERS, period="2y", interval="1d", auto_adjust=True, progress=False)
-if raw is None or raw.empty:
+close, missing = None, TICKERS
+for attempt in range(4):   # gelegentliche Yahoo-/Cache-Fehler (z. B. "database is locked") abfangen
+    raw = yf.download(TICKERS, period="2y", interval="1d", auto_adjust=True, progress=False, threads=False)
+    if raw is not None and not raw.empty:
+        close = raw["Close"]
+        missing = [t for t in TICKERS if t not in close.columns or close[t].dropna().empty]
+        if not missing:
+            break
+    time.sleep(5)
+if close is None:
     sys.exit("Fehler: Yahoo Finance hat keine Daten geliefert.")
-
-close = raw["Close"]
-missing = [t for t in TICKERS if t not in close.columns or close[t].dropna().empty]
 if missing:
     sys.exit("Fehler: keine Daten fuer " + ", ".join(missing))
 
