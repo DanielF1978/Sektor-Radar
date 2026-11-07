@@ -124,6 +124,22 @@ svg.wchart { width: 100%; height: 90px; display: block; }
 .wtoken input { width: 100%; font-family: var(--mono); font-size: .85rem; }
 .wmsg { font-size: .9rem; }
 .wmsg.bad { color: var(--lag); }
+
+/* Branchen-Radar */
+.indsum { font-size: 1.05rem; }
+.indsum strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+tr.indrow { cursor: pointer; }
+tr.indrow:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+tr.indrow.sel td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+td.nm2 { white-space: normal; min-width: 170px; }
+td.nm2 small { display: block; color: var(--muted); font-size: .72rem; }
+.s-neu { color: var(--lead); } .s-frueh { color: var(--impr); } .s-bullish { color: var(--fg); } .s-bearish { color: var(--lag); }
+#indfilter button { padding: 8px 10px; font-size: .85rem; white-space: nowrap; }
+#indfilter { max-width: 100%; }
+.indsum .note { display: block; }
+.ms { display: none; }
+@media (max-width: 560px) { .hm, .hs { display: none; } .ms { display: inline-block !important; margin-top: 3px; } td.nm2 { min-width: 120px; } #indfilter button { padding: 8px 7px; font-size: .8rem; } }
+.mem { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
 </style>
 </head>
 <body>
@@ -175,6 +191,29 @@ svg.wchart { width: 100%; height: 90px; display: block; }
       <button type="button" id="iclose" class="linkbtn">Schließen</button>
     </div>
     <div id="ibody" style="display:flex;flex-direction:column;gap:10px"></div>
+  </section>
+
+  <section id="indsec" hidden>
+    <div class="controls">
+      <div>
+        <h2>Branchen-Radar</h2>
+        <p class="note" id="indnote"></p>
+      </div>
+    </div>
+    <p class="indsum" id="indsum"></p>
+    <div class="seg" role="group" aria-label="Filter" id="indfilter">
+      <button type="button" data-indf="neu" aria-pressed="true">Neu bullish</button>
+      <button type="button" data-indf="frueh" aria-pressed="false">Frühe Dreher</button>
+      <button type="button" data-indf="bullish" aria-pressed="false">Alle bullish</button>
+      <button type="button" data-indf="all" aria-pressed="false">Alle</button>
+    </div>
+    <div class="panel scroll">
+      <table>
+        <thead><tr><th>Branche</th><th class="num hm">Aktien</th><th class="num">1 Woche</th><th class="num hm">1 Monat</th><th class="num">Über 50 T</th><th class="hs">Status</th></tr></thead>
+        <tbody id="indbody"></tbody>
+      </table>
+    </div>
+    <p class="note" id="indlegend"></p>
   </section>
 
   <section id="watchsec">
@@ -794,7 +833,7 @@ document.querySelectorAll("[data-period]").forEach(function (el) {
 document.querySelectorAll("[data-basis]").forEach(function (el) {
   el.addEventListener("click", function () { BASIS = el.getAttribute("data-basis"); saveChoice(); if (DATA) drawHeat(); });
 });
-$("refresh").addEventListener("click", function () { loadWatch(); $("stand").textContent = "Lade Daten…"; DET = null; INS = null; insRequested = false; load(); loadDetails(); });
+$("refresh").addEventListener("click", function () { loadWatch(); loadInd(); $("stand").textContent = "Lade Daten…"; DET = null; INS = null; insRequested = false; load(); loadDetails(); });
 $("heat").addEventListener("click", function (ev) {
   var b = ev.target.closest ? ev.target.closest("button.tile") : null;
   if (!b) return;
@@ -966,9 +1005,65 @@ $("wgrid").addEventListener("click", function (ev) {
   WDATA.items = WDATA.items.filter(function (x) { return x !== it; }); drawWatch();
 });
 /* ---- end Beobachtungsliste ---- */
+
+/* ---- Branchen-Radar ---- */
+var IND = null, INDF = "neu", INDSEL = null;
+var INDLBL = { neu: "Neu bullish", frueh: "Früher Dreher", bullish: "Bullish", bearish: "Nicht bullish" };
+function indFilter(it) { return INDF === "all" || (INDF === "bullish" ? (it.status === "bullish" || it.status === "neu") : it.status === INDF); }
+function drawInd() {
+  var sec = $("indsec");
+  if (!IND) { sec.hidden = true; return; }
+  sec.hidden = false;
+  var c = IND.counts, d = IND.date.split("-").reverse().join(".");
+  $("indnote").textContent = "Stand " + d + " · " + c.total + " Branchen (GICS, S&P 500/400/600, mindestens " + IND.min_members + " Aktien)";
+  $("indsum").innerHTML = "Diese Woche neu bullish: <strong>" + c.neu + "</strong> von " + c.total + " Branchen" +
+    ' <span class="note">· Frühe Dreher: ' + c.frueh + " · insgesamt bullish: " + c.bull_all + "</span>";
+  document.querySelectorAll("[data-indf]").forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-indf") === INDF); });
+  var rows = IND.items.filter(indFilter);
+  if (INDF !== "neu" && INDF !== "frueh") rows = rows.slice();
+  var h = "";
+  rows.forEach(function (it) {
+    var i = IND.items.indexOf(it), sel = INDSEL === i;
+    h += '<tr class="indrow' + (sel ? " sel" : "") + '" data-ind="' + i + '"><td class="nm2">' + wesc(it.name) + '<small>' + wesc(it.sector) + '</small><span class="pill s-' + it.status + ' ms">' + INDLBL[it.status] + '</span></td>' +
+      '<td class="num hm">' + it.n + '</td><td class="num ' + (it.r5 >= 0 ? "up-t" : "down-t") + '">' + pc(it.r5) + '</td><td class="num hm ' + (it.r21 >= 0 ? "up-t" : "down-t") + '">' + pc(it.r21) + '</td>' +
+      '<td class="num">' + (it.br === null ? "–" : it.br + " %") + '</td><td class="hs"><span class="pill s-' + it.status + '">' + INDLBL[it.status] + '</span></td></tr>';
+    if (sel) {
+      h += '<tr><td colspan="6" style="white-space:normal"><div class="mem">' + it.m.map(function (m) {
+        return '<span class="chip" title="' + wesc(m[1]) + '">' + wesc(m[0]) + ' ' + (m[2] === null ? "–" : (m[2] >= 0 ? "+" : "−") + Math.abs(m[2]).toFixed(1).replace(".", ",") + " %") + '</span>';
+      }).join("") + (it.n > it.m.length ? '<span class="note">… und ' + (it.n - it.m.length) + ' weitere</span>' : "") + '<span class="note" style="flex-basis:100%">' + it.n + ' Aktien insgesamt, 1 Monat ' + pc(it.r21) + '</span>' + '</div></td></tr>';
+    }
+  });
+  if (!rows.length) h = '<tr><td colspan="6" class="note">' + (INDF === "neu" ? "Diese Woche ist keine Branche neu bullish geworden." : "Keine Branchen in dieser Gruppe.") + '</td></tr>';
+  $("indbody").innerHTML = h;
+  $("indlegend").innerHTML = "<strong>Neu bullish</strong>: der gleichgewichtete Branchenindex liegt jetzt über seiner 50- und 150-Tage-Linie, vor 5 Handelstagen war das noch nicht so. <strong>Frühe Dreher</strong>: neu über der 50-Tage-Linie, aber noch unter der 150-Tage-Linie. „Über 50 T“ ist der Anteil der Aktien der Branche über ihrer eigenen 50-Tage-Linie. Die Zahl hinter einem Aktienkürzel ist ihre Wochenrendite. Branchennamen nach GICS (englisch). Keine Anlageberatung.";
+}
+function loadInd() {
+  var urls = ["https://raw.githubusercontent.com/" + REPO + "/main/industries.json", "industries.json"];
+  function tryNext(i) {
+    if (i >= urls.length) { IND = null; drawInd(); return; }
+    fetch(urls[i] + (i === 0 ? "?t=" + Date.now() : ""), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (d && d.items && d.counts) { IND = d; drawInd(); } else tryNext(i + 1); })
+      .catch(function () { tryNext(i + 1); });
+  }
+  tryNext(0);
+}
+$("indfilter").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-indf]") : null;
+  if (!b) return;
+  INDF = b.getAttribute("data-indf"); INDSEL = null; drawInd();
+});
+$("indbody").addEventListener("click", function (ev) {
+  var r = ev.target.closest ? ev.target.closest("tr.indrow") : null;
+  if (!r) return;
+  var i = parseInt(r.getAttribute("data-ind"), 10);
+  INDSEL = INDSEL === i ? null : i; drawInd();
+});
+/* ---- end Branchen-Radar ---- */
 loadDetails();
 load();
 loadWatch();
+loadInd();
 </script>
 </body>
 </html>
