@@ -105,6 +105,25 @@ td.nm small .linkbtn { font-size: inherit; padding: 0; }
 .tile .tbig { font-size: 1.6rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .tile .tsmall { font-size: .72rem; opacity: .85; line-height: 1.35; }
 .tile .tsmall + .tsmall { font-variant-numeric: tabular-nums; }
+
+/* Beobachtungsliste */
+.wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.wcard { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wcard.below { border-color: var(--lag); }
+.whead { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.wname { font-weight: 600; overflow-wrap: anywhere; }
+.wnums { font-family: var(--mono); font-size: .85rem; color: var(--muted); }
+svg.wchart { width: 100%; height: 90px; display: block; }
+.wform { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.wform label { display: flex; flex-direction: column; gap: 2px; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.wform input, .wform select, .wtoken input { font: inherit; font-size: 1rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.wbtn { font: inherit; background: var(--accent); color: var(--bg); border: 0; border-radius: 6px; padding: 9px 14px; font-weight: 600; cursor: pointer; }
+.wbtn:disabled { opacity: .5; }
+.wbtn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); font-weight: 400; }
+.wtoken { display: flex; flex-direction: column; gap: 8px; }
+.wtoken input { width: 100%; font-family: var(--mono); font-size: .85rem; }
+.wmsg { font-size: .9rem; }
+.wmsg.bad { color: var(--lag); }
 </style>
 </head>
 <body>
@@ -156,6 +175,40 @@ td.nm small .linkbtn { font-size: inherit; padding: 0; }
       <button type="button" id="iclose" class="linkbtn">Schließen</button>
     </div>
     <div id="ibody" style="display:flex;flex-direction:column;gap:10px"></div>
+  </section>
+
+  <section id="watchsec">
+    <div class="controls">
+      <div>
+        <h2>Meine Werte</h2>
+        <p class="note">Meldung aufs Handy, wenn der Schlusskurs unter die gleitende Durchschnittslinie fällt oder wieder darüber steigt.</p>
+      </div>
+      <button type="button" id="wsettings" class="linkbtn">Zugang</button>
+    </div>
+    <div id="wtokenbox" class="panel wtoken" hidden>
+      <p class="note">Damit du Werte direkt hier hinzufügen und entfernen kannst, braucht die Seite einen Zugangsschlüssel für dieses eine Repository. Er wird nur in diesem Browser gespeichert. Anleitung: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. Repository access: nur „Sektor-Radar“. Unter Permissions → Repository permissions: „Contents“ auf „Read and write“. Den Schlüssel unten einfügen.</p>
+      <input id="wtoken" type="password" autocomplete="off" placeholder="github_pat_…" aria-label="GitHub-Zugangsschlüssel">
+      <div class="row" style="justify-content:flex-start">
+        <button type="button" id="wtsave" class="wbtn">Speichern</button>
+        <button type="button" id="wtclear" class="wbtn ghost">Schlüssel löschen</button>
+      </div>
+    </div>
+    <div id="wgrid" class="wgrid"></div>
+    <form id="wform" class="panel wform" hidden>
+      <label>Wert (Ticker)
+        <input id="wt" list="wlist" placeholder="z. B. SPY" maxlength="15" autocapitalize="characters" autocomplete="off" required>
+      </label>
+      <label>Linie
+        <select id="wma"><option value="50">50 Tage</option><option value="100">100 Tage</option><option value="150" selected>150 Tage</option><option value="200">200 Tage</option></select>
+      </label>
+      <button type="submit" class="wbtn" id="wadd">Hinzufügen</button>
+      <datalist id="wlist">
+        <option value="SPY">S&amp;P 500 (US-ETF)</option><option value="QQQ">Nasdaq 100 (US-ETF)</option><option value="IWM">Russell 2000 (US-ETF)</option>
+        <option value="VWCE.DE">FTSE All-World (Xetra)</option><option value="EUNL.DE">MSCI World (Xetra)</option><option value="SXR8.DE">S&amp;P 500 (Xetra)</option>
+        <option value="AAPL">Apple</option><option value="MSFT">Microsoft</option><option value="NVDA">NVIDIA</option><option value="^GSPC">S&amp;P 500 Index</option><option value="^GDAXI">DAX</option>
+      </datalist>
+    </form>
+    <p id="wmsg" class="wmsg note"></p>
   </section>
 
   <section id="chartsec" hidden>
@@ -741,7 +794,7 @@ document.querySelectorAll("[data-period]").forEach(function (el) {
 document.querySelectorAll("[data-basis]").forEach(function (el) {
   el.addEventListener("click", function () { BASIS = el.getAttribute("data-basis"); saveChoice(); if (DATA) drawHeat(); });
 });
-$("refresh").addEventListener("click", function () { $("stand").textContent = "Lade Daten…"; DET = null; INS = null; insRequested = false; load(); loadDetails(); });
+$("refresh").addEventListener("click", function () { loadWatch(); $("stand").textContent = "Lade Daten…"; DET = null; INS = null; insRequested = false; load(); loadDetails(); });
 $("heat").addEventListener("click", function (ev) {
   var b = ev.target.closest ? ev.target.closest("button.tile") : null;
   if (!b) return;
@@ -765,8 +818,157 @@ $("insidersec").addEventListener("click", function (ev) {
   if (ev.target.closest && ev.target.closest("[data-insall]")) { INSALL = true; drawInsider(); }
 });
 $("iclose").addEventListener("click", function () { INSSEL = null; drawInsider(); });
+
+/* ---- Beobachtungsliste ---- */
+var REPO = "DanielF1978/Sektor-Radar";
+var WDATA = null;
+function wtoken() { try { return localStorage.getItem("sr_gh_token") || ""; } catch (e) { return ""; } }
+function wesc(x) { return String(x).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function wmsg(t, bad) { var e = $("wmsg"); e.textContent = t || ""; e.className = "wmsg " + (bad ? "bad" : "note"); }
+
+function wchart(it) {
+  var c = it.c, m = it.m, W = 300, H = 90, P = 3, lo = Infinity, hi = -Infinity, i;
+  for (i = 0; i < c.length; i++) { lo = Math.min(lo, c[i]); hi = Math.max(hi, c[i]); if (m[i] !== null) { lo = Math.min(lo, m[i]); hi = Math.max(hi, m[i]); } }
+  var sx = function (k) { return P + (W - 2 * P) * k / Math.max(1, c.length - 1); };
+  var sy = function (v) { return H - P - (H - 2 * P) * (v - lo) / Math.max(1e-9, hi - lo); };
+  var pc_ = "", pm = "", started = false;
+  for (i = 0; i < c.length; i++) {
+    pc_ += (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(c[i]).toFixed(1);
+    if (m[i] !== null) { pm += (started ? "L" : "M") + sx(i).toFixed(1) + " " + sy(m[i]).toFixed(1); started = true; }
+  }
+  return '<svg class="wchart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Kurs und ' + it.ma + '-Tage-Linie">' +
+    '<path d="' + pm + '" fill="none" stroke="var(--weak)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>' +
+    '<path d="' + pc_ + '" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>';
+}
+
+function drawWatch() {
+  var g = $("wgrid"), canEdit = !!wtoken();
+  $("wform").hidden = !canEdit;
+  if (!WDATA) { g.innerHTML = '<p class="note">Lade…</p>'; return; }
+  if (!WDATA.items.length) { g.innerHTML = '<p class="note">' + (canEdit ? "Noch keine Werte. Füge unten den ersten hinzu." : "Noch keine Werte. Über „Zugang“ kannst du Werte hinzufügen.") + '</p>'; return; }
+  g.innerHTML = WDATA.items.map(function (it, idx) {
+    var rm = canEdit ? '<button type="button" class="linkbtn" data-wrm="' + idx + '">Entfernen</button>' : "";
+    if (it.error || it.pending) {
+      return '<div class="wcard"><div class="whead"><span class="wname">' + wesc(it.name || it.t) + '</span>' + rm + '</div>' +
+        '<span class="note">' + wesc(it.error || "Wird beim nächsten Lauf berechnet (ca. 1–2 Minuten, dann oben auf „Aktualisieren“ tippen).") + '</span></div>';
+    }
+    var below = it.pos === "below";
+    return '<div class="wcard' + (below ? " below" : "") + '"><div class="whead"><span class="wname">' + wesc(it.name) + ' <span class="tick note">' + wesc(it.t) + '</span></span>' + rm + '</div>' +
+      '<div><span class="pill ' + (below ? "q-lag" : "q-lead") + '">' + (below ? "Unter " : "Über ") + it.ma + "-Tage-Linie" + '</span></div>' +
+      wchart(it) +
+      '<div class="wnums">Kurs ' + fmt(it.px, 2) + ' · Linie ' + fmt(it.mav, 2) + ' · ' + fmt(it.dist, 1, true).replace("-", "−") + ' %</div>' +
+      '<div class="note">Stand ' + wesc(it.day.split("-").reverse().join(".")) + '</div></div>';
+  }).join("");
+}
+
+function loadWatch() {
+  var urls = ["https://raw.githubusercontent.com/" + REPO + "/main/watch_data.json", "watch_data.json"];
+  function done(d) { WDATA = d; drawWatch(); }
+  function tryNext(i) {
+    if (i >= urls.length) { WDATA = { items: [] }; drawWatch(); return; }
+    fetch(urls[i] + (i === 0 ? "?t=" + Date.now() : ""), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (wtoken()) mergePending(d, done); else done(d); })
+      .catch(function () { tryNext(i + 1); });
+  }
+  tryNext(0);
+}
+
+/* Einträge, die schon in watchlist.json stehen, aber noch nicht berechnet sind, als „ausstehend“ zeigen */
+function mergePending(d, cb) {
+  ghGet(function (err, list) {
+    if (err || !list) { cb(d); return; }
+    var have = {};
+    d.items.forEach(function (it) { have[it.t + "|" + it.ma] = 1; });
+    list.werte.forEach(function (w) {
+      var k = String(w.t).toUpperCase() + "|" + (w.ma || 150);
+      if (!have[k]) d.items.push({ t: String(w.t).toUpperCase(), name: w.name || w.t, ma: w.ma || 150, pending: true });
+    });
+    cb(d);
+  });
+}
+
+function b64enc(str) { return btoa(unescape(encodeURIComponent(str))); }
+function b64dec(b) { return decodeURIComponent(escape(atob(b.replace(/\s/g, "")))); }
+function ghFetch(method, body) {
+  return fetch("https://api.github.com/repos/" + REPO + "/contents/watchlist.json", {
+    method: method, cache: "no-store",
+    headers: { "Authorization": "Bearer " + wtoken(), "Accept": "application/vnd.github+json", "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined
+  });
+}
+function ghGet(cb) {
+  ghFetch("GET").then(function (r) {
+    if (r.status === 401 || r.status === 403) throw new Error("Der Zugangsschlüssel wird nicht akzeptiert (abgelaufen oder ohne Schreibrecht auf Contents).");
+    if (!r.ok) throw new Error("GitHub antwortet mit Fehler " + r.status + ".");
+    return r.json();
+  }).then(function (j) {
+    var list; try { list = JSON.parse(b64dec(j.content)); } catch (e) { list = { margin_pct: 0.5, werte: [] }; }
+    if (!list.werte) list.werte = [];
+    cb(null, list, j.sha);
+  }).catch(function (e) { cb(e); });
+}
+function ghSave(list, sha, cb) {
+  ghFetch("PUT", { message: "Beobachtungsliste geändert", content: b64enc(JSON.stringify(list, null, 1) + "\n"), sha: sha })
+    .then(function (r) {
+      if (r.status === 409 || r.status === 422) throw new Error("Die Liste wurde zwischenzeitlich geändert. Bitte noch einmal versuchen.");
+      if (!r.ok) throw new Error("Speichern fehlgeschlagen (Fehler " + r.status + ").");
+      cb(null);
+    }).catch(function (e) { cb(e); });
+}
+
+function wchange(fn, okText) {
+  wmsg("Speichere…");
+  ghGet(function (err, list, sha) {
+    if (err) { wmsg(err.message || "Fehler beim Laden der Liste.", true); return; }
+    if (!fn(list)) { return; }
+    ghSave(list, sha, function (e2) {
+      if (e2) { wmsg(e2.message, true); return; }
+      wmsg(okText + " In ca. 1–2 Minuten sind die Kursdaten da, dann oben auf „Aktualisieren“ tippen.");
+      WDATA = WDATA || { items: [] };
+      mergePending(WDATA, function (d) { WDATA = d; drawWatch(); });
+    });
+  });
+}
+
+$("wsettings").addEventListener("click", function () { var b = $("wtokenbox"); b.hidden = !b.hidden; });
+$("wtsave").addEventListener("click", function () {
+  var v = $("wtoken").value.trim();
+  if (!v) { wmsg("Bitte den Schlüssel einfügen.", true); return; }
+  try { localStorage.setItem("sr_gh_token", v); } catch (e) { wmsg("Der Browser erlaubt kein Speichern.", true); return; }
+  $("wtoken").value = ""; $("wtokenbox").hidden = true; wmsg("Schlüssel gespeichert."); loadWatch();
+});
+$("wtclear").addEventListener("click", function () {
+  try { localStorage.removeItem("sr_gh_token"); } catch (e) {}
+  $("wtoken").value = ""; wmsg("Schlüssel gelöscht."); loadWatch();
+});
+$("wform").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  var t = $("wt").value.trim().toUpperCase(), ma = parseInt($("wma").value, 10);
+  if (!/^[A-Z0-9.\-=^]{1,15}$/.test(t)) { wmsg("Ungültiger Ticker. Erlaubt sind Buchstaben, Ziffern und . - ^ =", true); return; }
+  var opt = document.querySelector('#wlist option[value="' + t + '"]');
+  var name = opt ? opt.textContent : t;
+  wchange(function (list) {
+    if (list.werte.some(function (w) { return String(w.t).toUpperCase() === t && (w.ma || 150) === ma; })) { wmsg("Dieser Wert ist schon in der Liste.", true); return false; }
+    list.werte.push({ t: t, name: name, ma: ma }); return true;
+  }, t + " hinzugefügt.");
+  $("wt").value = "";
+});
+$("wgrid").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-wrm]") : null;
+  if (!b) return;
+  var it = WDATA.items[parseInt(b.getAttribute("data-wrm"), 10)];
+  if (!it) return;
+  wchange(function (list) {
+    list.werte = list.werte.filter(function (w) { return !(String(w.t).toUpperCase() === it.t && (w.ma || 150) === it.ma); });
+    return true;
+  }, it.t + " entfernt.");
+  WDATA.items = WDATA.items.filter(function (x) { return x !== it; }); drawWatch();
+});
+/* ---- end Beobachtungsliste ---- */
 loadDetails();
 load();
+loadWatch();
 </script>
 </body>
 </html>
