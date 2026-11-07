@@ -66,16 +66,20 @@ def main():
         print("Hinweis: NTFY_TOPIC fehlt, keine Meldung, Stand bleibt unveraendert.")
         return
     state = load(STATE, {})
-    new_state, summary = dict(state), []
+    new_state, summary, items = {}, [], []
     for w in cfg.get("werte", []):
-        t, n = w["t"], int(w.get("ma", 150))
+        t, n = str(w["t"]).strip().upper(), int(w.get("ma", 150))
         label = w.get("name") or t
         c = closes(t)
         if c is None or len(c) < n + 5:
             print("%s: zu wenige Daten, uebersprungen" % t)
+            items.append({"t": t, "name": label, "ma": n, "error": "Keine oder zu wenige Kursdaten bei Yahoo Finance gefunden"})
+            if t + "|" + str(n) in state:
+                new_state[t + "|" + str(n)] = state[t + "|" + str(n)]
             continue
         key = "%s|%d" % (t, n)
-        px, ma = float(c.iloc[-1]), float(c.tail(n).mean())
+        ma_s = c.rolling(n).mean()
+        px, ma = float(c.iloc[-1]), float(ma_s.iloc[-1])
         dist = (px / ma - 1) * 100
         day = c.index[-1].strftime("%d.%m.%Y")
         old = state.get(key, {}).get("pos")
@@ -87,6 +91,11 @@ def main():
         elif old is None:
             pos = "below" if px < ma else "above"
         new_state[key] = {"pos": pos, "px": round(px, 2), "ma": round(ma, 2), "day": day}
+        tail = 250
+        items.append({"t": t, "name": label, "ma": n, "pos": pos, "px": round(px, 2), "mav": round(ma, 2),
+                      "dist": round(dist, 2), "day": c.index[-1].strftime("%Y-%m-%d"),
+                      "c": [round(float(x), 2) for x in c.tail(tail)],
+                      "m": [None if x != x else round(float(x), 2) for x in ma_s.tail(tail)]})
         txt = "Kurs %.2f, %d-Tage-Linie %.2f (%+.1f %%), Stand %s" % (px, n, ma, dist, day)
         summary.append("%s: %s" % (label, txt))
         print("%s -> %s | %s" % (key, pos, txt))
@@ -95,10 +104,17 @@ def main():
                 send(topic, "%s fällt unter die %d-Tage-Linie" % (label, n), txt, 4, "chart_with_downwards_trend")
             else:
                 send(topic, "%s steigt wieder über die %d-Tage-Linie" % (label, n), txt, 3, "chart_with_upwards_trend")
+        elif state and key not in state:
+            send(topic, "%s zur Beobachtungsliste hinzugefügt" % label,
+                 txt + (" – aktuell darunter" if pos == "below" else " – aktuell darüber"), 2, "eyes")
     if not state and summary:
         send(topic, "Beobachtungsliste eingerichtet", "\n".join(summary), 3, "eyes")
     with open(STATE, "w", encoding="utf-8") as f:
         json.dump(new_state, f, sort_keys=True, indent=1)
+    import datetime
+    with open("watch_data.json", "w", encoding="utf-8") as f:
+        json.dump({"updated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                   "margin_pct": margin * 100, "items": items}, f, ensure_ascii=False, separators=(",", ":"))
 
 
 if __name__ == "__main__":
