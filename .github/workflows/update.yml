@@ -41,7 +41,7 @@ jobs:
           git add data.json state.json
           git add details.json 2>/dev/null || true
           git add fund_snapshots.json 2>/dev/null || true
-          git add watch_state.json 2>/dev/null || true
+          git add watch_state.json watch_data.json 2>/dev/null || true
           git diff --staged --quiet && exit 0
           git commit -m "Kurse und Status aktualisiert"
           for i in 1 2 3; do
