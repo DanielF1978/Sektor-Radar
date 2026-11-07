@@ -121,18 +121,89 @@ def ssga_rows(t):
     return rows
 
 
+MAX_SPAN = {1: 5, 5: 9, 21: 35}   # hoechstens so viele Kalendertage darf ein Zeitraum umfassen (Luecken in der Historie)
+
+
 def flows_from_rows(rows):
     """Netto-Zufluss = Summe der Anteilsveraenderung je Tag mal NAV dieses Tages (Ausgabe und Ruecknahme zum NAV).
-    Prozent bezogen auf das Fondsvermoegen am Start. Gibt ausserdem das Datum der letzten Zeile zurueck."""
+    Prozent bezogen auf das Fondsvermoegen am Start. rows: (Datum, NAV, Anteile), neueste zuerst.
+    Gibt ausserdem das Datum der neuesten Zeile zurueck."""
     out = {}
     for n in (1, 5, 21):
-        if len(rows) < n + 2:
+        if len(rows) < n + 1 or (rows[0][0] - rows[n][0]).days > MAX_SPAN[n]:
             continue
         flow = sum((rows[i][2] - rows[i + 1][2]) * rows[i][1] for i in range(n))
         start = rows[n][2] * rows[n][1]
         out["f%d" % n] = clean(flow / 1e6, 0)
         out["fp%d" % n] = clean(flow / start * 100)
     return out, (rows[0][0].isoformat() if rows else None)
+
+
+# iShares (BlackRock) liefert nur den aktuellen Stand. Die Historie baut sich Tag fuer Tag in ishares_history.json auf.
+ISHARES = {
+    "IBB": (239699, "ishares-nasdaq-biotechnology-etf"),
+    "IHI": (239516, "ishares-us-medical-devices-etf"),
+    "IHF": (239512, "ishares-us-healthcare-providers-etf"),
+    "ITA": (239502, "ishares-us-aer-def-etf"),
+    "IYT": (239501, "ishares-transportation-average-etf"),
+    "IGV": (239771, "ishares-expanded-tech-software-sector-etf"),
+}
+ISHARES_FILE = "ishares_history.json"
+ISHARES_KEEP = 150
+
+
+def _page_text(raw):
+    import html
+    import re
+    raw = re.sub(r"(?is)<(script|style).*?</\1>", " ", raw)
+    raw = re.sub(r"(?s)<[^>]+>", " ", raw)
+    return re.sub(r"\s+", " ", html.unescape(raw))
+
+
+def parse_ishares(raw, ticker):
+    """Liest (Datum, NAV, Anteile) aus der iShares-Fondsseite. None, wenn nicht eindeutig."""
+    import re
+    if not re.search(r"(?is)<title>[^<]*\b%s\b" % re.escape(ticker), raw):
+        return None
+    txt = _page_text(raw)
+    ms = re.search(r"Shares Outstanding\s+([\d,]+(?:\.\d+)?)\s+as of\s+([A-Z][a-z]{2} \d{1,2}, \d{4})", txt)
+    mn = re.search(r"NAV as of\s+([A-Z][a-z]{2} \d{1,2}, \d{4})\s+\$\s*\$?\s*([\d,]+\.\d+)", txt)
+    if not ms or not mn or ms.group(2) != mn.group(1):
+        return None
+    try:
+        d = datetime.datetime.strptime(ms.group(2), "%b %d, %Y").date()
+        return d, float(mn.group(2).replace(",", "")), float(ms.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def fetch_ishares(ticker):
+    import urllib.request
+    pid, slug = ISHARES[ticker]
+    try:
+        req = urllib.request.Request("https://www.ishares.com/us/products/%d/%s" % (pid, slug),
+                                     headers={"User-Agent": UA, "Accept": "text/html,*/*"})
+        with urllib.request.urlopen(req, timeout=40) as r:
+            return parse_ishares(r.read().decode("utf-8", errors="replace"), ticker)
+    except Exception:
+        return None
+
+
+def load_ishares_history():
+    try:
+        with open(ISHARES_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def ishares_rows(ticker, hist):
+    snap = fetch_ishares(ticker)
+    if snap:
+        d, nav, sh = snap
+        hist.setdefault(ticker, {})[d.isoformat()] = [sh, nav]
+    h = hist.get(ticker, {})
+    return [(datetime.date.fromisoformat(k), v[1], v[0]) for k, v in sorted(h.items(), reverse=True)]
 
 
 def main():
@@ -150,6 +221,7 @@ def main():
     if raw is None or raw.empty:
         sys.exit("Fehler: Yahoo Finance hat keine Daten geliefert.")
 
+    ihist = load_ishares_history()
     out_sectors, missing, last_date, flow_dates = {}, [], None, []
     for sec, cfg in SECTORS.items():
         entries = [(sec, cfg["name"] + " (Sektor-ETF)", "sector")]
@@ -171,7 +243,8 @@ def main():
             item = {"t": t, "name": name, "kind": kind}
             item.update(m)
             if kind in ("sector", "sub"):
-                fl, fdate = flows_from_rows(ssga_rows(t))
+                rows = ishares_rows(t, ihist) if t in ISHARES else ssga_rows(t)
+                fl, fdate = flows_from_rows(rows)
                 if fl:
                     item.update(fl)
                     flow_dates.append(fdate)
@@ -188,6 +261,12 @@ def main():
         "flow_date": max(flow_dates) if flow_dates else None,
         "sectors": out_sectors,
     }
+    cut = (datetime.date.today() - datetime.timedelta(days=ISHARES_KEEP)).isoformat()
+    for t in list(ihist):
+        ihist[t] = {k: v for k, v in ihist[t].items() if k >= cut}
+    if ihist:
+        with open(ISHARES_FILE, "w", encoding="utf-8") as f:
+            json.dump(ihist, f, sort_keys=True, separators=(",", ":"))
     with open("details.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     print("OK: %d Sektoren, %d Werte, fehlend: %s" % (
