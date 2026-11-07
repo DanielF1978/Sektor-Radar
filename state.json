@@ -12,5 +12,19 @@
   "XLV": "Leading",
   "XLY": "Leading"
  },
- "d_date": "2026-11-05"
+ "d_date": "2026-11-06",
+ "w": {
+  "XLB": "Leading",
+  "XLC": "Improving",
+  "XLE": "Lagging",
+  "XLF": "Leading",
+  "XLI": "Improving",
+  "XLK": "Lagging",
+  "XLP": "Leading",
+  "XLRE": "Leading",
+  "XLU": "Leading",
+  "XLV": "Leading",
+  "XLY": "Leading"
+ },
+ "w_date": "2026-11-06"
 }
