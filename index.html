@@ -542,7 +542,7 @@ function flowTd(x, P) {
 }
 function flowSummary(ref, rows, P) {
   var f = ref[P.f];
-  if (f === undefined || f === null) return '<p class="note" style="margin-top:6px">ETF-Zufluss: Für diesen Fonds liegen keine Zuflussdaten vor (verfügbar sind sie für die SPDR-ETFs von State Street, z. B. XL-Sektoren, XBI, XPH, KRE, XHB).</p>';
+  if (f === undefined || f === null) return '<p class="note" style="margin-top:6px">ETF-Zufluss: Für diesen Fonds liegen (noch) keine Zuflussdaten vor. Sofort verfügbar sind sie für SPDR-ETFs, bei iShares-Fonds bauen sie sich ab dem ersten Lauf Tag für Tag auf. VanEck-Fonds (SMH, GDX, OIH) werden nicht unterstützt.</p>';
   var subs = rows.filter(function (r) { return r.x.kind === "sub" && r.x[P.f] !== undefined && r.x[P.f] !== null; })
     .sort(function (a, b) { return b.x[P.f] - a.x[P.f]; });
   var t = '<p style="margin-top:6px"><strong>ETF-Zufluss (geschätzt):</strong> ' + ref.t + ' ' + flowFmt(f) + ' (' + pc(ref[P.fp]) + ' des Fondsvermögens)';
@@ -609,7 +609,7 @@ function drawDetail() {
     '<strong>Up/Down</strong>: Volumen an Aufwärtstagen geteilt durch Volumen an Abwärtstagen (20 Tage, über 1 = mehr Umsatz bei steigenden Kursen). ' +
     '<strong>CMF</strong>: Chaikin Money Flow über 20 Tage, von −1 bis +1, positiv wenn Schlusskurse eher im oberen Teil der Tagesspanne liegen. ' +
     '<strong>Signal</strong>: Kurs im Plus bzw. Minus, Rel. Vol. ab 1,2× und CMF jenseits von ±0,05. Volumen zeigt Aktivität, nicht, wer kauft; das Signal ist ein Hinweis und keine Bestätigung von Fondskäufen. ' +
-    '<strong>ETF-Zufluss</strong>: geschätzt aus der täglichen Veränderung der Anteile im Umlauf (Daten von State Street) mal Nettoinventarwert, darunter in Prozent des Fondsvermögens zu Beginn des Zeitraums. Die Daten erscheinen mit etwa einem Handelstag Verzug' + (DET && DET.flow_date ? ' (zuletzt: ' + DET.flow_date.split('-').reverse().join('.') + ')' : '') + '. Verfügbar nur für SPDR-ETFs (XL-Sektoren, XBI, XPH, XHB, XRT, KRE, KBE, KIE, XOP, XME). Bei iShares- und VanEck-Fonds steht „–“. Die Zahlen weichen von den offiziellen Angaben der Fondsanbieter ab. ' +
+    '<strong>ETF-Zufluss</strong>: geschätzt aus der täglichen Veränderung der Anteile im Umlauf (Daten von State Street) mal Nettoinventarwert, darunter in Prozent des Fondsvermögens zu Beginn des Zeitraums. Die Daten erscheinen mit etwa einem Handelstag Verzug' + (DET && DET.flow_date ? ' (zuletzt: ' + DET.flow_date.split('-').reverse().join('.') + ')' : '') + '. Quellen: SPDR-ETFs (XL-Sektoren, XBI, XPH, XHB, XRT, KRE, KBE, KIE, XOP, XME) von State Street, sofort für 1 Tag, 1 Woche und 1 Monat. iShares-ETFs (IBB, IHI, IHF, ITA, IYT, IGV) liefern nur den aktuellen Stand, ihre Historie baut sich ab dem ersten Lauf auf (1 Tag nach ca. 2 Tagen, 1 Woche nach ca. 1 Woche, 1 Monat nach ca. 4 Wochen). Bei VanEck-Fonds (SMH, GDX, OIH) steht „–“. Die Zahlen weichen von den offiziellen Angaben der Fondsanbieter ab. ' +
     '<strong>Insider</strong>: Käufe und Verkäufe von Führungskräften, Verwaltungsräten und 10-%-Eignern am offenen Markt (SEC Form 4, letzte 90 Tage, Verkäufe ab 25 Tsd. $). Ein Cluster liegt vor, wenn mindestens 3 verschiedene Insider gekauft haben.</p>';
   $("dbody").innerHTML = v + t + legend;
 }
