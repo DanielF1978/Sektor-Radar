@@ -1,7 +1,20 @@
 {
-  "margin_pct": 0.5,
-  "werte": [
-    {"t": "SPY", "name": "S&P 500 (SPDR)", "ma": 150},
-    {"t": "VWCE.DE", "name": "Vanguard FTSE All-World (Xetra)", "ma": 150}
-  ]
+ "margin_pct": 0.5,
+ "werte": [
+  {
+   "t": "SPY",
+   "name": "S&P 500 (SPDR)",
+   "ma": 150
+  },
+  {
+   "t": "VWCE.DE",
+   "name": "Vanguard FTSE All-World (Xetra)",
+   "ma": 150
+  },
+  {
+   "t": "QQQ",
+   "name": "Nasdaq 100 (US-ETF)",
+   "ma": 150
+  }
+ ]
 }
