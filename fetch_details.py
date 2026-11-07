@@ -89,63 +89,50 @@ def metrics(df):
     return out
 
 
-SNAP_FILE = "fund_snapshots.json"
-SNAP_KEEP = 150          # Tage Historie
-NAV_TOLERANCE = 0.03     # NAV-Veraenderung und Kursveraenderung duerfen hoechstens so weit abweichen
+SSGA_URL = "https://www.ssga.com/library-content/products/fund-data/etfs/us/navhist-us-en-%s.xlsx"
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
-def load_snaps():
+def ssga_rows(t):
+    """Liest die Tageshistorie (Datum, NAV, Anteile) eines SPDR-ETFs von State Street. Neueste Zeile zuerst.
+    Gibt [] zurueck, wenn der Fonds dort nicht gefuehrt wird oder der Abruf scheitert."""
+    import io
+    import urllib.request
     try:
-        with open(SNAP_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, ValueError):
-        return {}
-
-
-def take_snapshot(t, snaps, key):
-    """Speichert Fondsvermoegen und Nettoinventarwert von heute. Yahoo liefert keine Historie dafuer,
-    deshalb baut sich die Datenbasis Tag fuer Tag auf."""
-    try:
-        info = yf.Ticker(t).info
-        ta, nav = info.get("totalAssets"), info.get("navPrice")
+        import openpyxl
+        req = urllib.request.Request(SSGA_URL % t.lower(), headers={"User-Agent": UA, "Accept": "*/*"})
+        with urllib.request.urlopen(req, timeout=40) as r:
+            data = r.read()
+        ws = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True).worksheets[0]
     except Exception:
-        return
-    if not ta or not nav:
-        return
-    snaps.setdefault(t, {})[key] = {"ta": int(ta), "nav": round(float(nav), 4)}
+        return []
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        if not row or len(row) < 3:
+            continue
+        try:
+            d = datetime.datetime.strptime(str(row[0]).strip(), "%d-%b-%Y").date()
+            nav, sh = float(row[1]), float(row[2])
+        except (ValueError, TypeError):
+            continue
+        if nav > 0 and sh > 0:
+            rows.append((d, nav, sh))
+    rows.sort(key=lambda x: x[0], reverse=True)
+    return rows
 
 
-def snap_flows(t, df, snaps):
-    """Geschaetzter Netto-Zufluss = Fondsvermoegen heute minus Fondsvermoegen am Start, hochgerechnet mit der
-    Wertentwicklung des Fonds. Wird nur berechnet, wenn die Daten plausibel und frisch sind."""
-    h = snaps.get(t, {})
-    keys = sorted(h)
-    if len(keys) < 2:
-        return {}
-    end_key = keys[-1]
-    last_day = df.index[-1].date()
-    if abs((last_day - datetime.date.fromisoformat(end_key)).days) > 3:
-        return {}
-    if h[end_key]["ta"] == h[keys[-2]]["ta"]:    # Fondsvermoegen heute unveraendert: vermutlich nicht aktualisiert
-        return {}
+def flows_from_rows(rows):
+    """Netto-Zufluss = Summe der Anteilsveraenderung je Tag mal NAV dieses Tages (Ausgabe und Ruecknahme zum NAV).
+    Prozent bezogen auf das Fondsvermoegen am Start. Gibt ausserdem das Datum der letzten Zeile zurueck."""
     out = {}
     for n in (1, 5, 21):
-        start_day = df.index[-1 - n].date()
-        cand = [k for k in keys if k <= start_day.isoformat()]
-        if not cand:
+        if len(rows) < n + 2:
             continue
-        start_key = cand[-1]
-        if (start_day - datetime.date.fromisoformat(start_key)).days > 4:
-            continue
-        a, b = h[start_key], h[end_key]
-        nav_ratio = b["nav"] / a["nav"]
-        px_ratio = float(df["c"].iloc[-1] / df["c"].iloc[-1 - n])
-        if abs(nav_ratio / px_ratio - 1) > NAV_TOLERANCE:   # Split, veraltete oder unpassende Werte
-            continue
-        flow = b["ta"] - a["ta"] * nav_ratio
+        flow = sum((rows[i][2] - rows[i + 1][2]) * rows[i][1] for i in range(n))
+        start = rows[n][2] * rows[n][1]
         out["f%d" % n] = clean(flow / 1e6, 0)
-        out["fp%d" % n] = clean(flow / a["ta"] * 100)
-    return out
+        out["fp%d" % n] = clean(flow / start * 100)
+    return out, (rows[0][0].isoformat() if rows else None)
 
 
 def main():
@@ -163,9 +150,7 @@ def main():
     if raw is None or raw.empty:
         sys.exit("Fehler: Yahoo Finance hat keine Daten geliefert.")
 
-    snaps = load_snaps()
-    snap_key = os.environ.get("SNAP_DATE") or datetime.date.today().isoformat()   # SNAP_DATE nur fuer Tests
-    out_sectors, missing, last_date = {}, [], None
+    out_sectors, missing, last_date, flow_dates = {}, [], None, []
     for sec, cfg in SECTORS.items():
         entries = [(sec, cfg["name"] + " (Sektor-ETF)", "sector")]
         entries += [(t, n, "sub") for t, n in cfg["subs"]]
@@ -186,8 +171,10 @@ def main():
             item = {"t": t, "name": name, "kind": kind}
             item.update(m)
             if kind in ("sector", "sub"):
-                take_snapshot(t, snaps, snap_key)
-                item.update(snap_flows(t, df, snaps))
+                fl, fdate = flows_from_rows(ssga_rows(t))
+                if fl:
+                    item.update(fl)
+                    flow_dates.append(fdate)
             items.append(item)
         if any(i["kind"] == "sector" for i in items):
             out_sectors[sec] = {"name": cfg["name"], "items": items}
@@ -198,13 +185,9 @@ def main():
     out = {
         "updated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "date": last_date,
+        "flow_date": max(flow_dates) if flow_dates else None,
         "sectors": out_sectors,
     }
-    cut = (datetime.date.fromisoformat(snap_key) - datetime.timedelta(days=SNAP_KEEP)).isoformat()
-    for t in list(snaps):
-        snaps[t] = {k: v for k, v in snaps[t].items() if k >= cut}
-    with open(SNAP_FILE, "w", encoding="utf-8") as f:
-        json.dump(snaps, f, sort_keys=True, separators=(",", ":"))
     with open("details.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     print("OK: %d Sektoren, %d Werte, fehlend: %s" % (
