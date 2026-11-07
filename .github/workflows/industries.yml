@@ -1,0 +1,43 @@
+name: Branchen-Radar
+
+on:
+  schedule:
+    # Freitag 22:45 UTC (nach US-Handelsschluss)
+    - cron: "45 22 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: industries
+  cancel-in-progress: false
+
+jobs:
+  industries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pakete installieren
+        run: pip install yfinance lxml
+      - name: Branchen berechnen
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python fetch_industries.py
+      - name: Dateien einchecken
+        if: always()
+        run: |
+          git config user.name "sektor-radar-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add industries.json industries_universe.json 2>/dev/null || true
+          git diff --staged --quiet && exit 0
+          git commit -m "Branchen-Radar aktualisiert"
+          for i in 1 2 3; do
+            git pull --rebase && git push && exit 0
+            sleep 5
+          done
+          exit 1
