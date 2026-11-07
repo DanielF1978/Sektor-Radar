@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: yfinance installieren
-        run: pip install yfinance
+        run: pip install yfinance openpyxl
       - name: Kurse holen
         run: python fetch_data.py
       - name: Details holen (Teilbranchen und Einzelwerte)
