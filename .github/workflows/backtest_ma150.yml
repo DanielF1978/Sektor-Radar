@@ -1,0 +1,35 @@
+name: MA150-Rueckblick
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Kuerzel, mit Komma getrennt"
+        default: "AAPL,SPY,INTC"
+      years:
+        description: "Jahre Historie"
+        default: "12"
+permissions:
+  contents: write
+concurrency:
+  group: backtest-ma150
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yfinance pandas numpy
+      - run: python backtest_ma150.py
+        env:
+          TICKERS: ${{ github.event.inputs.tickers }}
+          YEARS: ${{ github.event.inputs.years }}
+      - name: Ergebnis speichern
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add backtest_ma150.json
+          git commit -m "MA150-Rueckblick ${{ github.event.inputs.tickers }}" || exit 0
+          for i in 1 2 3; do git pull --rebase && git push && break || sleep 5; done
