@@ -123,7 +123,13 @@ def stats(trades, n_days, bh_ret, bh_dd):
         equity *= 1 + x["ret"]
         peak = max(peak, equity)
         mdd = min(mdd, equity / peak - 1)
+    years = n_days / 252.0
+    cagr = equity ** (1 / years) - 1
+    bh_cagr = (1 + bh_ret) ** (1 / years) - 1
+    exposure = sum(x["tage"] for x in trades) / n_days
     return {
+        "jahresrendite_pct": round(100 * cagr, 1), "buy_hold_jahresrendite_pct": round(100 * bh_cagr, 1),
+        "jahresrendite_je_marktzeit_pct": round(100 * cagr / exposure, 1) if exposure > 0 else None,
         "trades": len(trades), "trefferquote_pct": round(100 * (rets > 0).mean(), 1),
         "ø_trade_pct": round(100 * rets.mean(), 2), "ø_R": round(float(Rs.mean()), 2),
         "gewinnfaktor": round(float(wins.sum() / -losses.sum()), 2) if len(losses) and losses.sum() < 0 else None,
@@ -167,7 +173,9 @@ def main():
     results, bh_ret, bh_dd = run(df)
     print("%s: %d Handelstage (%s bis %s). Buy & Hold: %+.1f %%, groesster Rueckgang %.1f %%\n" % (
         ticker, len(df), df.index[0].date(), df.index[-1].date(), 100 * bh_ret, 100 * bh_dd))
-    print("Fenster Tol% Pkte Ausstieg | Trades Treffer% oTrade% oR  GewFkt Tage ImMarkt% Gesamt% MaxVerl%")
+    bhc = (1 + bh_ret) ** (252.0 / len(df)) - 1
+    print("Buy & Hold Jahresrendite: %.1f %%. 'J/Markt' = Jahresrendite geteilt durch Zeit im Markt (fairer Vergleich)\n" % (100 * bhc))
+    print("Fenster Tol% Pkte Ausstieg | Trades Treffer% oTrade% oR  GewFkt Tage ImMarkt% Gesamt% MaxVerl% Jahr% J/Markt%")
     for r in sorted(results, key=lambda r: -(r.get("ø_R", -99) if r["trades"] else -99)):
         if not r["trades"]:
             print("%5d %4.1f %4d %-7s | keine Trades" % (r["fenster"], r["toleranz_pct"], r["min_punkte"], r["ausstieg"]))
@@ -175,7 +183,7 @@ def main():
         print("%5d %4.1f %4d %-7s | %6d %7.1f %7.2f %5.2f %6s %4.1f %8.1f %7.1f %8.1f" % (
             r["fenster"], r["toleranz_pct"], r["min_punkte"], r["ausstieg"], r["trades"], r["trefferquote_pct"],
             r["ø_trade_pct"], r["ø_R"], r["gewinnfaktor"], r["ø_haltedauer_tage"], r["zeit_im_markt_pct"],
-            r["gesamt_pct"], r["max_verlust_pct"]))
+            r["gesamt_pct"], r["max_verlust_pct"]) + " %6.1f %7s" % (r["jahresrendite_pct"], r["jahresrendite_je_marktzeit_pct"]))
     with open("backtest_results.json", "w", encoding="utf-8") as f:
         json.dump({"ticker": ticker, "von": str(df.index[0].date()), "bis": str(df.index[-1].date()),
                    "buy_hold_pct": round(100 * bh_ret, 1), "ergebnisse": results}, f, ensure_ascii=False, indent=1)
