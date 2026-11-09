@@ -15,9 +15,11 @@ import yfinance as yf
 
 SECTORS = {
     "XLK": {"name": "Technologie",
-            "subs": [("SMH", "Halbleiter (ETF)"), ("IGV", "Software (ETF)")],
+            "subs": [("SMH", "Halbleiter (ETF)"), ("IGV", "Software (ETF)"), ("CIBR", "Cybersecurity (ETF)")],
             "stocks": [("NVDA", "NVIDIA"), ("AAPL", "Apple"), ("MSFT", "Microsoft"), ("AVGO", "Broadcom"),
-                       ("ORCL", "Oracle"), ("AMD", "AMD"), ("CRM", "Salesforce"), ("CSCO", "Cisco")]},
+                       ("ORCL", "Oracle"), ("AMD", "AMD"), ("CRM", "Salesforce"), ("CSCO", "Cisco"),
+                       ("PANW", "Palo Alto Networks (Cyber)"), ("CRWD", "CrowdStrike (Cyber)"), ("FTNT", "Fortinet (Cyber)"),
+                       ("ZS", "Zscaler (Cyber)"), ("NET", "Cloudflare (Cyber)")]},
     "XLC": {"name": "Kommunikation", "subs": [],
             "stocks": [("META", "Meta"), ("GOOGL", "Alphabet"), ("NFLX", "Netflix"), ("DIS", "Disney"),
                        ("T", "AT&T"), ("VZ", "Verizon"), ("TMUS", "T-Mobile US"), ("CMCSA", "Comcast")]},
