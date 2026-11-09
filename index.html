@@ -140,6 +140,18 @@ td.nm2 small { display: block; color: var(--muted); font-size: .72rem; }
 .ms { display: none; }
 @media (max-width: 560px) { .hm, .hs { display: none; } .ms { display: inline-block !important; margin-top: 3px; } td.nm2 { min-width: 120px; } #indfilter button { padding: 8px 7px; font-size: .8rem; } }
 .mem { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+
+.wcard.clickable { cursor: pointer; }
+.wcard.clickable:hover { border-color: var(--accent); }
+.whint { font-size: .72rem; color: var(--muted); }
+#wchartbox { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+#wchartbox[hidden] { display: none !important; }
+#wchart { width: 100%; height: 340px; }
+.wopts { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.wopts .seg button { padding: 6px 10px; font-size: .8rem; }
+.wopts label { font-size: .85rem; display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+.wleg { font-family: var(--mono); font-size: .78rem; color: var(--muted); min-height: 2.6em; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
 </style>
 </head>
 <body>
@@ -233,6 +245,29 @@ td.nm2 small { display: block; color: var(--muted); font-size: .72rem; }
       </div>
     </div>
     <div id="wgrid" class="wgrid"></div>
+    <div id="wchartbox" class="panel" hidden>
+      <div class="controls">
+        <h3 id="wctitle" style="margin:0"></h3>
+        <button type="button" class="linkbtn" id="wcclose">Schließen</button>
+      </div>
+      <div class="wopts">
+        <div class="seg" role="group" aria-label="Zeitraum" id="wcrange">
+          <button type="button" data-r="63" aria-pressed="false">3 M</button>
+          <button type="button" data-r="126" aria-pressed="true">6 M</button>
+          <button type="button" data-r="252" aria-pressed="false">1 J</button>
+          <button type="button" data-r="0" aria-pressed="false">Alles</button>
+        </div>
+        <div class="seg" role="group" aria-label="Darstellung" id="wctype">
+          <button type="button" data-ty="candle" aria-pressed="true">Kerzen</button>
+          <button type="button" data-ty="line" aria-pressed="false">Linie</button>
+        </div>
+        <label><input type="checkbox" data-ma="50" checked><span class="sw" style="background:#e0a030"></span>50 T</label>
+        <label><input type="checkbox" data-ma="150" checked><span class="sw" style="background:#4aa3df"></span>150 T</label>
+        <label><input type="checkbox" data-ma="200"><span class="sw" style="background:#c06ad8"></span>200 T</label>
+      </div>
+      <div id="wchart"></div>
+      <div class="wleg" id="wcleg"></div>
+    </div>
     <form id="wform" class="panel wform" hidden>
       <label>Wert (Ticker)
         <input id="wt" list="wlist" placeholder="z. B. SPY" maxlength="15" autocapitalize="characters" autocomplete="off" required>
@@ -892,11 +927,11 @@ function drawWatch() {
         '<span class="note">' + wesc(it.error || "Wird beim nächsten Lauf berechnet (ca. 1–2 Minuten, dann oben auf „Aktualisieren“ tippen).") + '</span></div>';
     }
     var below = it.pos === "below";
-    return '<div class="wcard' + (below ? " below" : "") + '"><div class="whead"><span class="wname">' + wesc(it.name) + ' <span class="tick note">' + wesc(it.t) + '</span></span>' + rm + '</div>' +
+    return '<div class="wcard clickable' + (below ? " below" : "") + '" data-wopen="' + idx + '"><div class="whead"><span class="wname">' + wesc(it.name) + ' <span class="tick note">' + wesc(it.t) + '</span></span>' + rm + '</div>' +
       '<div><span class="pill ' + (below ? "q-lag" : "q-lead") + '">' + (below ? "Unter " : "Über ") + it.ma + "-Tage-Linie" + '</span></div>' +
       wchart(it) +
       '<div class="wnums">Kurs ' + fmt(it.px, 2) + ' · Linie ' + fmt(it.mav, 2) + ' · ' + fmt(it.dist, 1, true).replace("-", "−") + ' %</div>' +
-      '<div class="note">Stand ' + wesc(it.day.split("-").reverse().join(".")) + '</div></div>';
+      '<div class="note">Stand ' + wesc(it.day.split("-").reverse().join(".")) + ' <span class="whint">· Tippen für großen Chart</span></div></div>';
   }).join("");
 }
 
@@ -1004,6 +1039,99 @@ $("wgrid").addEventListener("click", function (ev) {
   }, it.t + " entfernt.");
   WDATA.items = WDATA.items.filter(function (x) { return x !== it; }); drawWatch();
 });
+
+/* ---- großer Chart (Lightweight Charts) ---- */
+var LWC_URL = "https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js";
+var WC = { chart: null, item: null, range: 126, type: "candle", ma: { 50: true, 150: true, 200: false }, series: {} };
+function lwcLoad(cb) {
+  if (window.LightweightCharts) { cb(true); return; }
+  var sc = document.createElement("script");
+  sc.src = LWC_URL; sc.onload = function () { cb(!!window.LightweightCharts); }; sc.onerror = function () { cb(false); };
+  document.head.appendChild(sc);
+}
+function cv(name, fb) { var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
+function wcBuild() {
+  var it = WC.item; if (!it || !it.k) return;
+  var el = $("wchart");
+  if (WC.chart) { WC.chart.remove(); WC.chart = null; }
+  var L = window.LightweightCharts, k = it.k;
+  var fg = cv("--fg", "#222"), line = cv("--line", "#ddd"), muted = cv("--muted", "#888");
+  var chart = L.createChart(el, {
+    width: el.clientWidth, height: el.clientHeight,
+    layout: { background: { type: "solid", color: "transparent" }, textColor: muted, fontFamily: "inherit" },
+    grid: { vertLines: { color: line }, horzLines: { color: line } },
+    rightPriceScale: { borderColor: line }, timeScale: { borderColor: line, timeVisible: false },
+    crosshair: { mode: 0 }, handleScale: true, handleScroll: true
+  });
+  var up = cv("--lead", "#2e9e5b"), down = cv("--lag", "#d0453d");
+  var main;
+  if (WC.type === "candle") {
+    main = chart.addCandlestickSeries({ upColor: up, downColor: down, borderUpColor: up, borderDownColor: down, wickUpColor: up, wickDownColor: down });
+    var cd = [];
+    for (var i = 0; i < k.d.length; i++) if (k.o[i] !== null && k.h[i] !== null && k.l[i] !== null && k.c[i] !== null) cd.push({ time: k.d[i], open: k.o[i], high: k.h[i], low: k.l[i], close: k.c[i] });
+    main.setData(cd);
+  } else {
+    main = chart.addLineSeries({ color: cv("--accent", fg), lineWidth: 2 });
+    var ld = []; for (var j = 0; j < k.d.length; j++) if (k.c[j] !== null) ld.push({ time: k.d[j], value: k.c[j] });
+    main.setData(ld);
+  }
+  var cols = { 50: "#e0a030", 150: "#4aa3df", 200: "#c06ad8" }, ser = { main: main };
+  [50, 150, 200].forEach(function (n) {
+    var s_ = chart.addLineSeries({ color: cols[n], lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: !!WC.ma[n] });
+    var arr = k["s" + n], dd = [];
+    for (var q = 0; q < k.d.length; q++) if (arr[q] !== null) dd.push({ time: k.d[q], value: arr[q] });
+    s_.setData(dd); ser[n] = s_;
+  });
+  WC.series = ser; WC.chart = chart;
+  var n_ = k.d.length, from = WC.range ? Math.max(0, n_ - WC.range) : 0;
+  chart.timeScale().setVisibleLogicalRange({ from: from, to: n_ + 2 });
+  chart.subscribeCrosshairMove(function (p) { wcLegend(p && p.time ? p.time : null); });
+  wcLegend(null);
+}
+function wcLegend(time) {
+  var it = WC.item, k = it.k, i = k.d.length - 1;
+  if (time) { var ix = k.d.indexOf(typeof time === "string" ? time : ""); if (ix >= 0) i = ix; }
+  var f = function (x) { return x === null || x === undefined ? "–" : fmt(x, 2); };
+  var h = "<strong>" + wesc(k.d[i].split("-").reverse().join(".")) + "</strong> · Eröffnung " + f(k.o[i]) + " · Hoch " + f(k.h[i]) + " · Tief " + f(k.l[i]) + " · Schluss " + f(k.c[i]);
+  [50, 150, 200].forEach(function (n) { if (WC.ma[n]) h += " · " + n + " T " + f(k["s" + n][i]); });
+  $("wcleg").innerHTML = h;
+}
+function wcOpen(idx) {
+  var it = WDATA && WDATA.items[idx]; if (!it || it.error || it.pending) return;
+  if (!it.k) { wmsg("Für diesen Wert fehlen noch die Chart-Daten. Sie kommen beim nächsten Lauf (Kurs-Workflow bzw. Beobachtungsliste).", true); return; }
+  WC.item = it; $("wctitle").textContent = it.name + " (" + it.t + ")";
+  $("wchartbox").hidden = false;
+  lwcLoad(function (ok) {
+    if (!ok) { $("wcleg").textContent = "Die Chart-Bibliothek konnte nicht geladen werden (Internetverbindung?)."; return; }
+    wcBuild(); $("wchartbox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+}
+$("wgrid").addEventListener("click", function (ev) {
+  if (ev.target.closest && ev.target.closest("[data-wrm]")) return;
+  var c = ev.target.closest ? ev.target.closest("[data-wopen]") : null;
+  if (c) wcOpen(parseInt(c.getAttribute("data-wopen"), 10));
+});
+$("wcclose").addEventListener("click", function () { $("wchartbox").hidden = true; if (WC.chart) { WC.chart.remove(); WC.chart = null; } });
+$("wcrange").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-r]") : null; if (!b || !WC.chart) return;
+  WC.range = parseInt(b.getAttribute("data-r"), 10);
+  document.querySelectorAll("#wcrange button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); });
+  var n = WC.item.k.d.length; WC.chart.timeScale().setVisibleLogicalRange({ from: WC.range ? Math.max(0, n - WC.range) : 0, to: n + 2 });
+});
+$("wctype").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-ty]") : null; if (!b) return;
+  WC.type = b.getAttribute("data-ty");
+  document.querySelectorAll("#wctype button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); });
+  if (WC.chart) wcBuild();
+});
+document.querySelectorAll("#wchartbox [data-ma]").forEach(function (cb) {
+  cb.addEventListener("change", function () {
+    var n = cb.getAttribute("data-ma"); WC.ma[n] = cb.checked;
+    if (WC.series[n]) WC.series[n].applyOptions({ visible: cb.checked }); if (WC.item) wcLegend(null);
+  });
+});
+window.addEventListener("resize", function () { if (WC.chart) WC.chart.applyOptions({ width: $("wchart").clientWidth }); });
+/* ---- end großer Chart ---- */
 /* ---- end Beobachtungsliste ---- */
 
 /* ---- Branchen-Radar ---- */
