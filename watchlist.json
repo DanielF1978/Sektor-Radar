@@ -15,6 +15,11 @@
    "t": "QQQ",
    "name": "Nasdaq 100 (US-ETF)",
    "ma": 150
+  },
+  {
+   "t": "CIBR",
+   "name": "CIBR",
+   "ma": 150
   }
  ]
 }
