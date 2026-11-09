@@ -15,6 +15,7 @@ import sys
 import time
 import urllib.request
 
+import pandas as pd
 import yfinance as yf
 
 SITE = "https://danielf1978.github.io/Sektor-Radar/"
@@ -41,16 +42,20 @@ def send(topic, title, body, priority, tags):
 
 
 def closes(ticker):
+    """Gibt ein DataFrame mit Open, High, Low, Close zurueck (oder None)."""
     for _ in range(3):
         try:
             df = yf.download(ticker, period="2y", interval="1d", auto_adjust=False, progress=False, threads=False)
             if df is not None and not df.empty:
-                c = df["Close"]
-                if hasattr(c, "columns"):
-                    c = c.iloc[:, 0]
-                c = c.dropna()
-                if len(c):
-                    return c
+                cols = {}
+                for f in ("Open", "High", "Low", "Close"):
+                    c = df[f]
+                    if hasattr(c, "columns"):
+                        c = c.iloc[:, 0]
+                    cols[f] = c
+                out = pd.DataFrame(cols).dropna()
+                if len(out):
+                    return out
         except Exception as e:
             print("%s: %s" % (ticker, e))
         time.sleep(4)
@@ -70,7 +75,8 @@ def main():
     for w in cfg.get("werte", []):
         t, n = str(w["t"]).strip().upper(), int(w.get("ma", 150))
         label = w.get("name") or t
-        c = closes(t)
+        ohlc = closes(t)
+        c = ohlc["Close"] if ohlc is not None else None
         if c is None or len(c) < n + 5:
             print("%s: zu wenige Daten, uebersprungen" % t)
             items.append({"t": t, "name": label, "ma": n, "error": "Keine oder zu wenige Kursdaten bei Yahoo Finance gefunden"})
@@ -96,6 +102,11 @@ def main():
                       "dist": round(dist, 2), "day": c.index[-1].strftime("%Y-%m-%d"),
                       "c": [round(float(x), 2) for x in c.tail(tail)],
                       "m": [None if x != x else round(float(x), 2) for x in ma_s.tail(tail)]})
+        K = 300
+        r2 = lambda ser: [None if x != x else round(float(x), 2) for x in ser.tail(K)]
+        items[-1]["k"] = {"d": [d.strftime("%Y-%m-%d") for d in c.index[-K:]], "o": r2(ohlc["Open"]), "h": r2(ohlc["High"]),
+                          "l": r2(ohlc["Low"]), "c": r2(c), "s50": r2(c.rolling(50).mean()),
+                          "s150": r2(c.rolling(150).mean()), "s200": r2(c.rolling(200).mean())}
         txt = "Kurs %.2f, %d-Tage-Linie %.2f (%+.1f %%), Stand %s" % (px, n, ma, dist, day)
         summary.append("%s: %s" % (label, txt))
         print("%s -> %s | %s" % (key, pos, txt))
