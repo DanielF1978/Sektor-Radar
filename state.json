@@ -2,23 +2,23 @@
  "d": {
   "XLB": "Weakening",
   "XLC": "Leading",
-  "XLE": "Lagging",
+  "XLE": "Leading",
   "XLF": "Weakening",
   "XLI": "Leading",
   "XLK": "Improving",
-  "XLP": "Weakening",
+  "XLP": "Leading",
   "XLRE": "Weakening",
   "XLU": "Leading",
   "XLV": "Weakening",
   "XLY": "Weakening"
  },
- "d_date": "2026-11-18",
+ "d_date": "2026-11-20",
  "w": {
   "XLB": "Leading",
-  "XLC": "Improving",
-  "XLE": "Lagging",
+  "XLC": "Leading",
+  "XLE": "Weakening",
   "XLF": "Leading",
-  "XLI": "Improving",
+  "XLI": "Leading",
   "XLK": "Lagging",
   "XLP": "Leading",
   "XLRE": "Leading",
@@ -26,5 +26,5 @@
   "XLV": "Leading",
   "XLY": "Leading"
  },
- "w_date": "2026-11-06"
+ "w_date": "2026-11-20"
 }
