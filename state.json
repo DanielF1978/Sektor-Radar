@@ -2,17 +2,17 @@
  "d": {
   "XLB": "Weakening",
   "XLC": "Leading",
-  "XLE": "Leading",
+  "XLE": "Lagging",
   "XLF": "Weakening",
-  "XLI": "Leading",
+  "XLI": "Weakening",
   "XLK": "Improving",
-  "XLP": "Leading",
+  "XLP": "Weakening",
   "XLRE": "Weakening",
-  "XLU": "Leading",
+  "XLU": "Weakening",
   "XLV": "Weakening",
   "XLY": "Weakening"
  },
- "d_date": "2026-11-20",
+ "d_date": "2026-11-23",
  "w": {
   "XLB": "Leading",
   "XLC": "Leading",
